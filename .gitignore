@@ -13,3 +13,6 @@ build/
 *.py[cod]
 *.egg-info/
 .venv
+model-dir/
+output/
+refer_voice/
