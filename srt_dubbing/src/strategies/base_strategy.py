@@ -3,18 +3,13 @@
 """
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any
-import os
-import sys
 
-# 添加项目根目录到路径
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+# 使用绝对导入和新的工具模块
+from srt_dubbing.src.utils import setup_project_path
+from srt_dubbing.src.srt_parser import SRTEntry
 
-try:
-    from srt_dubbing.src.srt_parser import SRTEntry
-except ImportError:
-    # 兼容直接从src目录运行的情况
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from srt_parser import SRTEntry
+# 初始化项目环境
+setup_project_path()
 
 
 class TimeSyncStrategy(ABC):

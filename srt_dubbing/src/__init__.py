@@ -17,13 +17,21 @@ SRT配音项目 - 将SRT字幕文件转换为配音音频
 __version__ = "0.1.0"
 __author__ = "SRT Dubbing Team"
 
-# 导出主要类和函数
-from .srt_parser import SRTParser
-from .audio_processor import AudioProcessor
-from .cli import main
+# 使用绝对导入，更清晰明确
+from srt_dubbing.src.srt_parser import SRTParser
+from srt_dubbing.src.audio_processor import AudioProcessor
+from srt_dubbing.src.cli import main
+
+# 导出配置、工具和日志模块  
+from srt_dubbing.src import config
+from srt_dubbing.src import utils
+from srt_dubbing.src import logger
 
 __all__ = [
     "SRTParser",
     "AudioProcessor", 
-    "main"
+    "main",
+    "config",
+    "utils",
+    "logger"
 ] 

@@ -9,11 +9,16 @@ from typing import List, Dict, Any, Optional, Union
 from pathlib import Path
 import soundfile as sf
 
+# 使用绝对导入
+from srt_dubbing.src.config import AUDIO
+from srt_dubbing.src.utils import create_directory_if_needed
+from srt_dubbing.src.logger import get_logger
+
 
 class AudioProcessor:
     """音频处理器类"""
     
-    def __init__(self, sample_rate: int = 22050, channels: int = 1):
+    def __init__(self, sample_rate: int = None, channels: int = None):
         """
         初始化音频处理器
         
@@ -21,8 +26,8 @@ class AudioProcessor:
             sample_rate: 采样率
             channels: 声道数
         """
-        self.sample_rate = sample_rate
-        self.channels = channels
+        self.sample_rate = sample_rate or AUDIO.DEFAULT_SAMPLE_RATE
+        self.channels = channels or AUDIO.DEFAULT_CHANNELS
         self.audio_segments: List[Dict[str, Any]] = []
     
     def merge_audio_segments(self, segments: List[Dict[str, Any]], 
@@ -48,13 +53,15 @@ class AudioProcessor:
         # 按开始时间排序
         sorted_segments = sorted(segments, key=lambda x: x['start_time'])
         
+        logger = get_logger()
+        
         if verbose:
-            print("音频合并详情:")
+            logger.debug("音频合并详情:")
             for i, seg in enumerate(sorted_segments):
                 audio_len = len(seg['audio_data']) if hasattr(seg['audio_data'], '__len__') else 0
                 actual_duration = audio_len / self.sample_rate if audio_len > 0 else 0
                 expected_duration = seg.get('end_time', seg['start_time']) - seg['start_time']
-                print(f"  片段 {i+1}: 开始={seg['start_time']:.2f}s, 预期时长={expected_duration:.2f}s, 实际时长={actual_duration:.2f}s")
+                logger.debug(f"  片段 {i+1}: 开始={seg['start_time']:.2f}s, 预期时长={expected_duration:.2f}s, 实际时长={actual_duration:.2f}s")
         
         # 计算总时长 - 考虑音频实际长度
         max_end_time = 0
@@ -67,7 +74,7 @@ class AudioProcessor:
                 # 使用原始end_time作为后备
                 max_end_time = max(max_end_time, segment.get('end_time', segment['start_time']))
         
-        total_samples = int(max_end_time * self.sample_rate) + 1024  # 增加一点缓冲
+        total_samples = int(max_end_time * self.sample_rate) + AUDIO.DYNAMIC_BUFFER_SIZE  # 增加一点缓冲
         merged_audio = np.zeros(total_samples, dtype=np.float32)
         
         # 将每个音频片段放置到正确位置
@@ -82,7 +89,7 @@ class AudioProcessor:
             # 检查音频数据是否有效
             if len(audio_data) == 0:
                 if verbose:
-                    print(f"  警告: 片段 {i+1} 音频数据为空")
+                    logger.warning(f"片段 {i+1} 音频数据为空")
                 continue
             
             # 计算可以放置的范围（不截断，但防止越界）
@@ -95,7 +102,7 @@ class AudioProcessor:
                 if start_sample < prev_end_sample:
                     overlap_duration = (prev_end_sample - start_sample) / self.sample_rate
                     if verbose:
-                        print(f"  警告: 片段 {i+1} 与前一片段重叠 {overlap_duration:.2f}s")
+                        logger.warning(f"片段 {i+1} 与前一片段重叠 {overlap_duration:.2f}s")
                     # 调整开始位置避免重叠
                     start_sample = prev_end_sample
                     end_sample = start_sample + len(audio_data)
@@ -103,9 +110,9 @@ class AudioProcessor:
             # 确保不超出数组边界
             if end_sample > total_samples:
                 if verbose:
-                    print(f"  警告: 片段 {i+1} 超出总时长，延长输出数组")
+                    logger.debug(f"片段 {i+1} 超出总时长，延长输出数组")
                 # 动态扩展数组
-                new_total_samples = end_sample + 1024
+                new_total_samples = end_sample + AUDIO.DYNAMIC_BUFFER_SIZE
                 new_merged_audio = np.zeros(new_total_samples, dtype=np.float32)
                 new_merged_audio[:len(merged_audio)] = merged_audio
                 merged_audio = new_merged_audio
@@ -121,20 +128,20 @@ class AudioProcessor:
             
             if verbose:
                 actual_duration = len(audio_data) / self.sample_rate
-                print(f"  ✓ 片段 {i+1} 已放置: {start_sample}-{end_sample} 样本 ({actual_duration:.2f}s)")
+                logger.debug(f"  ✓ 片段 {i+1} 已放置: {start_sample}-{end_sample} 样本 ({actual_duration:.2f}s)")
         
         # 防止音频过载（混音时可能超过[-1,1]范围）
         if allow_overlap:
             max_val = np.max(np.abs(merged_audio))
-            if max_val > 1.0:
+            if max_val > AUDIO.MAX_AMPLITUDE:
                 merged_audio = merged_audio / max_val
                 if verbose:
-                    print(f"  音频归一化: 最大值 {max_val:.2f} -> 1.0")
+                    logger.debug(f"音频归一化: 最大值 {max_val:.2f} -> {AUDIO.MAX_AMPLITUDE}")
         
         return merged_audio
     
     def add_silence_between_segments(self, segments: List[Dict[str, Any]], 
-                                   gap_duration: float = 0.1) -> List[Dict[str, Any]]:
+                                   gap_duration: float = None) -> List[Dict[str, Any]]:
         """
         在音频片段之间添加静音间隔
         
@@ -164,7 +171,7 @@ class AudioProcessor:
         pass
     
     def apply_fade(self, audio_data: np.ndarray, 
-                   fade_in: float = 0.1, fade_out: float = 0.1) -> np.ndarray:
+                   fade_in: float = None, fade_out: float = None) -> np.ndarray:
         """
         应用淡入淡出效果
         
@@ -220,24 +227,25 @@ class AudioProcessor:
         """
         try:
             # 确保输出目录存在
-            output_dir = Path(output_path).parent
-            output_dir.mkdir(parents=True, exist_ok=True)
+            create_directory_if_needed(output_path)
             
             # 归一化音频数据到合适范围
             if len(audio_data) > 0:
                 # 防止过载，限制在[-1, 1]范围内
                 max_val = np.max(np.abs(audio_data))
-                if max_val > 1.0:
+                if max_val > AUDIO.MAX_AMPLITUDE:
                     audio_data = audio_data / max_val
             
             # 使用soundfile导出音频
             sf.write(output_path, audio_data, self.sample_rate, format=format.upper())
             
-            print(f"音频已导出到: {output_path}")
+            logger = get_logger()
+            logger.success(f"音频已导出到: {output_path}")
             return True
             
         except Exception as e:
-            print(f"导出音频失败: {e}")
+            logger = get_logger()
+            logger.error(f"导出音频失败: {e}")
             return False
     
     def load_audio(self, file_path: str) -> np.ndarray:
@@ -264,7 +272,8 @@ class AudioProcessor:
             return audio_data.astype(np.float32)
             
         except Exception as e:
-            print(f"加载音频文件失败: {e}")
+            logger = get_logger()
+            logger.error(f"加载音频文件失败: {e}")
             return np.array([])
     
     def get_audio_info(self, audio_data: np.ndarray) -> Dict[str, Any]:

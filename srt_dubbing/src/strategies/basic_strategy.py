@@ -7,30 +7,26 @@
 import numpy as np
 from typing import List, Dict, Any, Optional
 import os
-import sys
 
-# 添加项目根目录到路径，以便导入IndexTTS
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
+# 使用绝对导入，更清晰明确
+from srt_dubbing.src.utils import setup_project_path, safe_import_indextts, normalize_audio_data, validate_file_exists
+from srt_dubbing.src.config import AUDIO, STRATEGY, MODEL, VALIDATION
+from srt_dubbing.src.srt_parser import SRTEntry
+from srt_dubbing.src.strategies.base_strategy import TimeSyncStrategy
+from srt_dubbing.src.logger import get_logger, create_process_logger
 
-try:
-    from indextts.infer import IndexTTS
-except ImportError:
-    print("警告: 无法导入IndexTTS，请确保已正确安装IndexTTS")
-    IndexTTS = None
-
-import sys
-import os
-from ..srt_parser import SRTEntry
-from .base_strategy import TimeSyncStrategy
+# 初始化项目环境
+setup_project_path()
+IndexTTS, _indextts_available = safe_import_indextts()
 
 
 class BasicStrategy(TimeSyncStrategy):
     """基础自然合成策略实现"""
     
     def __init__(self, 
-                 silence_threshold: float = 0.5,
-                 max_speed_ratio: float = 1.2,
-                 min_speed_ratio: float = 0.8):
+                 silence_threshold: float = None,
+                 max_speed_ratio: float = None,
+                 min_speed_ratio: float = None):
         """
         初始化基础策略
         
@@ -39,11 +35,11 @@ class BasicStrategy(TimeSyncStrategy):
             max_speed_ratio: 最大语速比例
             min_speed_ratio: 最小语速比例
         """
-        self.silence_threshold = silence_threshold
-        self.max_speed_ratio = max_speed_ratio
-        self.min_speed_ratio = min_speed_ratio
+        self.silence_threshold = silence_threshold or STRATEGY.SILENCE_THRESHOLD
+        self.max_speed_ratio = max_speed_ratio or STRATEGY.BASIC_MAX_SPEED_RATIO
+        self.min_speed_ratio = min_speed_ratio or STRATEGY.BASIC_MIN_SPEED_RATIO
         self.tts_model = None
-        self._indextts_available = IndexTTS is not None
+        self._indextts_available = _indextts_available
     
     def name(self) -> str:
         """策略名称"""
@@ -74,40 +70,43 @@ class BasicStrategy(TimeSyncStrategy):
             raise RuntimeError("IndexTTS未安装，无法进行语音合成")
             
         # 初始化TTS模型（延迟初始化）
+        logger = get_logger()
         if self.tts_model is None:
-            
-            model_dir = kwargs.get('model_dir', 'model-dir/index_tts')
-            # 修复：使用与模型目录匹配的配置文件路径
-            cfg_path = kwargs.get('cfg_path', 'model-dir/index_tts/config.yaml')
+            model_dir = kwargs.get('model_dir', MODEL.DEFAULT_MODEL_DIR)
+            cfg_path = kwargs.get('cfg_path', MODEL.get_default_config_path(model_dir))
             
             try:
+                logger.step("加载IndexTTS模型")
                 self.tts_model = IndexTTS(
                     cfg_path=cfg_path,
                     model_dir=model_dir,
-                    is_fp16=True
+                    is_fp16=MODEL.DEFAULT_FP16
                 )
-                print(f"成功加载IndexTTS模型: {model_dir}")
-                print(f"使用配置文件: {cfg_path}")
+                logger.success(f"IndexTTS模型加载成功: {model_dir}")
+                logger.debug(f"使用配置文件: {cfg_path}")
             except Exception as e:
+                logger.error(f"IndexTTS模型加载失败: {e}")
                 raise RuntimeError(f"加载IndexTTS模型失败: {e}")
         
         voice_reference = kwargs.get('voice_reference')
         if not voice_reference:
             raise ValueError("必须提供参考语音文件路径 (voice_reference)")
         
-        if not os.path.exists(voice_reference):
-            raise FileNotFoundError(f"参考语音文件不存在: {voice_reference}")
+        validate_file_exists(voice_reference, "参考语音文件")
         
         verbose = kwargs.get('verbose', False)
         audio_segments = []
         
-        print(f"开始处理 {len(entries)} 个字幕条目...")
+        # 创建处理进度日志器
+        process_logger = create_process_logger("基础策略音频生成")
+        process_logger.start(f"处理 {len(entries)} 个字幕条目")
         
         for i, entry in enumerate(entries):
-            if verbose:
-                print(f"处理条目 {i+1}/{len(entries)}: {entry.text[:30]}...")
-            
             try:
+                # 始终显示进度，不仅仅在verbose模式下
+                text_preview = entry.text[:LOG.PROGRESS_TEXT_PREVIEW_LENGTH] + "..." if len(entry.text) > LOG.PROGRESS_TEXT_PREVIEW_LENGTH else entry.text
+                process_logger.progress(i + 1, len(entries), f"条目 {entry.index}: {text_preview}")
+                
                 # 合成语音
                 audio_data = self.synthesize_text(
                     entry.text, 
@@ -128,11 +127,11 @@ class BasicStrategy(TimeSyncStrategy):
                 audio_segments.append(segment)
                 
             except Exception as e:
-                print(f"处理条目 {entry.index} 失败: {e}")
+                logger.error(f"条目 {entry.index} 处理失败: {e}")
                 # 创建静音片段作为后备
                 silence_duration = entry.duration
                 # 使用标准采样率创建静音片段
-                silence_data = self.add_silence(silence_duration, 22050)
+                silence_data = self.add_silence(silence_duration, AUDIO.DEFAULT_SAMPLE_RATE)
                 segment = {
                     'audio_data': silence_data,
                     'start_time': entry.start_time,
@@ -143,7 +142,7 @@ class BasicStrategy(TimeSyncStrategy):
                 }
                 audio_segments.append(segment)
         
-        print(f"完成处理，生成 {len(audio_segments)} 个音频片段")
+        process_logger.complete(f"生成 {len(audio_segments)} 个音频片段")
         return audio_segments
 
     def synthesize_text(self, text: str, **kwargs) -> np.ndarray:
@@ -170,11 +169,11 @@ class BasicStrategy(TimeSyncStrategy):
         )
 
         # 确保音频数据是1D float32 数组并规范化到 [-1, 1] 范围
-        audio_data_float32 = audio_data_int16.flatten().astype(np.float32) / 32768.0
+        audio_data_float32 = normalize_audio_data(audio_data_int16)
         
         return audio_data_float32
 
-    def add_silence(self, duration: float, sample_rate: int = 22050) -> np.ndarray:
+    def add_silence(self, duration: float, sample_rate: int = None) -> np.ndarray:
         """
         生成指定时长的静音
         
@@ -185,6 +184,7 @@ class BasicStrategy(TimeSyncStrategy):
         Returns:
             静音音频数据
         """
+        sample_rate = sample_rate or AUDIO.DEFAULT_SAMPLE_RATE
         num_samples = int(duration * sample_rate)
         return np.zeros(num_samples, dtype=np.float32)
     
@@ -229,21 +229,23 @@ class BasicStrategy(TimeSyncStrategy):
         Returns:
             验证是否通过
         """
+        logger = get_logger()
+        
         if len(entries) != len(audio_segments):
-            print(f"警告: 条目数量不匹配 ({len(entries)} vs {len(audio_segments)})")
+            logger.warning(f"条目数量不匹配 ({len(entries)} vs {len(audio_segments)})")
             return False
         
         for entry, segment in zip(entries, audio_segments):
             # 检查音频数据是否存在
             if 'audio_data' not in segment or segment['audio_data'] is None:
-                print(f"错误: 条目 {entry.index} 没有音频数据")
+                logger.error(f"条目 {entry.index} 没有音频数据")
                 return False
             
             # 检查时间信息一致性
-            if abs(segment['start_time'] - entry.start_time) > 0.1:
-                print(f"警告: 条目 {entry.index} 开始时间不匹配")
+            if abs(segment['start_time'] - entry.start_time) > VALIDATION.TIME_MATCH_TOLERANCE:
+                logger.warning(f"条目 {entry.index} 开始时间不匹配")
             
-            if abs(segment['end_time'] - entry.end_time) > 0.1:
-                print(f"警告: 条目 {entry.index} 结束时间不匹配")
+            if abs(segment['end_time'] - entry.end_time) > VALIDATION.TIME_MATCH_TOLERANCE:
+                logger.warning(f"条目 {entry.index} 结束时间不匹配")
         
         return True 

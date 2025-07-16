@@ -10,7 +10,7 @@
 import pkgutil
 import importlib
 from typing import Dict, Type, List
-from .base_strategy import TimeSyncStrategy
+from srt_dubbing.src.strategies.base_strategy import TimeSyncStrategy
 
 # 全局注册表，用于存储所有发现的策略
 _strategy_registry: Dict[str, Type[TimeSyncStrategy]] = {}

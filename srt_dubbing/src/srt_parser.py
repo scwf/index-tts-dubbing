@@ -7,6 +7,7 @@ SRT字幕文件解析器
 import re
 from typing import List, NamedTuple, Optional
 from pathlib import Path
+from srt_dubbing.src.logger import get_logger
 
 
 class SRTEntry(NamedTuple):
@@ -80,6 +81,9 @@ class SRTParser:
             FileNotFoundError: 文件不存在
             ValueError: 文件格式错误
         """
+        logger = get_logger()
+        logger.step(f"读取SRT文件", f"文件: {file_path}")
+        
         file_path = Path(file_path)
         if not file_path.exists():
             raise FileNotFoundError(f"SRT文件不存在: {file_path}")
@@ -87,10 +91,13 @@ class SRTParser:
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
+                logger.debug(f"文件读取成功，大小: {len(content)} 字符")
         except UnicodeDecodeError:
+            logger.debug("UTF-8解码失败，尝试GBK编码")
             # 尝试其他编码
             with open(file_path, 'r', encoding='gbk') as f:
                 content = f.read()
+                logger.debug(f"GBK解码成功，大小: {len(content)} 字符")
         
         return self.parse_content(content)
     
@@ -107,9 +114,13 @@ class SRTParser:
         Raises:
             ValueError: 内容格式错误
         """
+        logger = get_logger()
+        logger.step("解析SRT内容结构")
+        
         entries = []
         # 按空行分割SRT条目
         blocks = content.strip().split('\n\n')
+        logger.debug(f"发现 {len(blocks)} 个字幕块")
         
         for block in blocks:
             if not block.strip():
@@ -160,6 +171,7 @@ class SRTParser:
                 raise ValueError(f"解析SRT条目失败: {block[:50]}... 错误: {e}")
         
         self.entries = entries
+        logger.success(f"SRT解析完成，共 {len(entries)} 个有效条目")
         return entries
     
     def validate_entries(self, entries: List[SRTEntry]) -> bool:
@@ -186,7 +198,8 @@ class SRTParser:
                 
             # 检查时间重叠（警告）
             if i > 0 and entry.start_time < entries[i-1].end_time:
-                print(f"警告: 条目 {entry.index} 与前一条目时间重叠")
+                logger = get_logger()
+                logger.warning(f"条目 {entry.index} 与前一条目时间重叠")
         
         return True
     
