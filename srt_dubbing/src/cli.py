@@ -55,9 +55,10 @@ def main():
         help=(
             "选择使用的时间同步策略。\n"
             f"可选策略: {', '.join(available_strategies)}\n"
-            "  - basic: 自然合成，可能与字幕时长不完全匹配。\n"
-            "  - stretch: 通过时间拉伸精确匹配字幕时长，保证同步。\n"
-            "(默认: basic)"
+            "  - basic: 自然合成，时长变化自然，音质最佳 (⭐⭐⭐⭐⭐)\n"
+            "  - stretch: 通过时间拉伸精确匹配字幕时长，保证同步 (⭐⭐⭐)\n"
+            "  - hq_stretch: 高质量拉伸，平衡音质与同步性 (⭐⭐⭐⭐)\n"
+            "(默认: stretch)"
         )
     )
     parser.add_argument(

@@ -27,13 +27,19 @@ class AudioConfig:
 
 class StrategyConfig:
     """策略相关配置"""
-    # 时间拉伸策略
+    # 时间拉伸策略 - 优化音质保护
     TIME_STRETCH_THRESHOLD = 0.05  # 变速阈值 (5%)
     TIME_DURATION_TOLERANCE = 0.1   # 时间偏差容忍度 (0.1秒)
-    MAX_SPEED_RATIO = 2.0
-    MIN_SPEED_RATIO = 0.5
     
-    # 基础策略
+    # 保守的变速范围 - 优先保证音质
+    MAX_SPEED_RATIO = 1.5    # 减少从2.0到1.5，减少音质损失
+    MIN_SPEED_RATIO = 0.7    # 减少从0.5到0.7，减少音质损失
+    
+    # 高质量模式的变速范围 - 可选的更保守设置
+    HIGH_QUALITY_MAX_SPEED = 1.3
+    HIGH_QUALITY_MIN_SPEED = 0.8
+    
+    # 基础策略 - 保持不变
     SILENCE_THRESHOLD = 0.5
     BASIC_MAX_SPEED_RATIO = 1.2
     BASIC_MIN_SPEED_RATIO = 0.8

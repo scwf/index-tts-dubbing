@@ -95,6 +95,14 @@ python -m srt_dubbing.src.cli \
   --model-dir model-dir/index_tts \
   --verbose
 
+# 使用高质量拉伸策略，平衡音质和同步性
+python -m srt_dubbing.src.cli \
+  --srt subtitles/movie.srt \
+  --voice voices/narrator.wav \
+  --output output/movie_hq.wav \
+  --strategy hq_stretch \
+  --verbose
+
 # 使用基础策略，自然语音合成
 python -m srt_dubbing.src.cli \
   --srt subtitles/movie.srt \
@@ -124,10 +132,11 @@ python -m srt_dubbing.src.cli \
 
 ### 策略说明
 
-| 策略 | 特点 | 适用场景 |
-|------|------|----------|
-| `basic` | 自然语音合成，可能与字幕时长不完全匹配 | 追求语音自然度，允许时长偏差 |
-| `stretch` | 通过时间拉伸精确匹配字幕时长 | 需要严格同步，如视频配音 |
+| 策略 | 特点 | 适用场景 | 音质 |
+|------|------|----------|------|
+| `basic` | 自然语音合成，可能与字幕时长不完全匹配 | 追求语音自然度，允许时长偏差 | ⭐⭐⭐⭐⭐ |
+| `stretch` | 通过时间拉伸精确匹配字幕时长 | 需要严格同步，可接受音质损失 | ⭐⭐⭐ |
+| `hq_stretch` | 高质量拉伸，在保证音质前提下调整时长 | 需要同步但更重视音质 | ⭐⭐⭐⭐ |
 
 ## 📋 输出示例
 
@@ -157,6 +166,18 @@ WARNING: 条目 12 与前一条目时间重叠
 
 ### Q: 如何选择合适的参考语音？
 A: 建议使用3-10秒的清晰语音文件，包含完整的语调变化，音质越好效果越佳。
+
+### Q: stretch策略音质不如basic策略怎么办？
+A: 这是因为时间拉伸会影响音质。建议：
+- 使用 `hq_stretch` 策略，它在保证音质的前提下进行时间调整
+- 检查SRT字幕时长是否合理，避免过度的时间拉伸
+- 如果对音质要求很高，使用 `basic` 策略并接受时长偏差
+
+### Q: 各策略如何选择？
+A: 
+- **basic**: 最佳音质，适合音频材料（如播客、有声书）
+- **hq_stretch**: 平衡音质和同步，适合大多数视频配音场景
+- **stretch**: 严格同步，适合对时间精度要求极高的场景
 
 ### Q: 处理大文件时内存不足怎么办？
 A: 可以将长SRT文件分割成多个小文件分别处理，然后再合并音频。
