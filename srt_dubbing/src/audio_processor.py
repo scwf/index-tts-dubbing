@@ -31,17 +31,19 @@ class AudioProcessor:
         self.audio_segments: List[Dict[str, Any]] = []
     
     def merge_audio_segments(self, segments: List[Dict[str, Any]], 
+                           strategy_name: str = "stretch",
                            allow_overlap: bool = True,
                            verbose: bool = False) -> np.ndarray:
         """
-        合并音频片段为完整音频
+        根据策略类型合并音频片段
         
         Args:
             segments: 音频片段列表，每个包含：
                 - audio_data: 音频数据
                 - start_time: 开始时间
-                - end_time: 结束时间 (仅作参考，不强制截断)
-            allow_overlap: 是否允许音频重叠
+                - end_time: 结束时间
+            strategy_name: 策略名称 ("basic", "hq_stretch", "stretch")
+            allow_overlap: 是否允许音频重叠（仅对stretch策略有效）
             verbose: 是否输出详细信息
         
         Returns:
@@ -50,13 +52,105 @@ class AudioProcessor:
         if not segments:
             return np.array([])
         
+        logger = get_logger()
+        
+        # 根据策略选择合并方式
+        if strategy_name in ["basic", "hq_stretch"]:
+            if verbose:
+                logger.debug(f"使用自然拼接模式进行音频合并 (策略: {strategy_name})")
+            return self._natural_concatenation(segments, verbose)
+        else:
+            if verbose:
+                logger.debug(f"使用时间同步模式进行音频合并 (策略: {strategy_name})")
+            return self._time_synchronized_merge(segments, allow_overlap, verbose)
+
+    
+    def _natural_concatenation(self, segments: List[Dict[str, Any]], 
+                              verbose: bool = False) -> np.ndarray:
+        """
+        自然拼接模式：按字幕顺序连续拼接音频，忽略时间约束
+        
+        适用于basic和hq_stretch策略，优先保证语音的自然流畅性
+        
+        Args:
+            segments: 音频片段列表
+            verbose: 是否输出详细信息
+            
+        Returns:
+            拼接后的音频数据
+        """
+        logger = get_logger()
+        
+        # 按字幕索引排序（而不是时间）
+        sorted_segments = sorted(segments, key=lambda x: x.get('index', 0))
+        
+        if verbose:
+            logger.debug("自然拼接模式详情:")
+            total_expected_duration = sum(seg.get('duration', 0) for seg in sorted_segments)
+            logger.debug(f"  字幕总时长: {total_expected_duration:.2f}s")
+        
+        # 收集所有有效的音频数据
+        audio_parts = []
+        total_duration = 0.0
+        
+        for i, segment in enumerate(sorted_segments):
+            audio_data = segment['audio_data']
+            
+            # 确保音频数据是numpy数组
+            if not isinstance(audio_data, np.ndarray):
+                audio_data = np.array(audio_data, dtype=np.float32)
+            
+            # 检查音频数据是否有效
+            if len(audio_data) == 0:
+                if verbose:
+                    logger.warning(f"片段 {i+1} (条目 {segment.get('index', '?')}) 音频数据为空，跳过")
+                continue
+            
+            audio_parts.append(audio_data)
+            actual_duration = len(audio_data) / self.sample_rate
+            total_duration += actual_duration
+            
+            if verbose:
+                expected_duration = segment.get('duration', 0)
+                text_preview = segment.get('text', '')[:30] + "..." if len(segment.get('text', '')) > 30 else segment.get('text', '')
+                logger.debug(f"  片段 {i+1}: {actual_duration:.2f}s (预期{expected_duration:.2f}s) - {text_preview}")
+        
+        if not audio_parts:
+            logger.warning("没有有效的音频数据可供拼接")
+            return np.array([])
+        
+        # 简单直接拼接所有音频片段
+        merged_audio = np.concatenate(audio_parts)
+        
+        if verbose:
+            logger.success(f"自然拼接完成: {len(audio_parts)} 个片段，总时长 {total_duration:.2f}s")
+            logger.debug(f"  最终音频: {len(merged_audio)} 样本 ({len(merged_audio)/self.sample_rate:.2f}s)")
+        
+        return merged_audio
+    
+    def _time_synchronized_merge(self, segments: List[Dict[str, Any]], 
+                                allow_overlap: bool = True,
+                                verbose: bool = False) -> np.ndarray:
+        """
+        时间同步合并模式：严格按照字幕时间定位音频片段
+        
+        适用于stretch策略，优先保证与字幕的时间同步
+        
+        Args:
+            segments: 音频片段列表
+            allow_overlap: 是否允许音频重叠
+            verbose: 是否输出详细信息
+            
+        Returns:
+            合并后的音频数据
+        """
+        logger = get_logger()
+        
         # 按开始时间排序
         sorted_segments = sorted(segments, key=lambda x: x['start_time'])
         
-        logger = get_logger()
-        
         if verbose:
-            logger.debug("音频合并详情:")
+            logger.debug("时间同步合并详情:")
             for i, seg in enumerate(sorted_segments):
                 audio_len = len(seg['audio_data']) if hasattr(seg['audio_data'], '__len__') else 0
                 actual_duration = audio_len / self.sample_rate if audio_len > 0 else 0
@@ -139,7 +233,7 @@ class AudioProcessor:
                     logger.debug(f"音频归一化: 最大值 {max_val:.2f} -> {AUDIO.MAX_AMPLITUDE}")
         
         return merged_audio
-    
+
     def add_silence_between_segments(self, segments: List[Dict[str, Any]], 
                                    gap_duration: float = None) -> List[Dict[str, Any]]:
         """

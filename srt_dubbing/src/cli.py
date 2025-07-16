@@ -130,7 +130,8 @@ def main():
         processor = AudioProcessor()
         merged_audio = processor.merge_audio_segments(
             audio_segments,
-            allow_overlap=True,  # 允许重叠以保证完整性
+            strategy_name=args.strategy,  # 传递策略名称
+            allow_overlap=True,  # 允许重叠以保证完整性（仅对stretch策略有效）
             verbose=args.verbose
         )
         

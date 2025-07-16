@@ -10,7 +10,7 @@ import os
 
 # 使用绝对导入，更清晰明确
 from srt_dubbing.src.utils import setup_project_path, safe_import_indextts, normalize_audio_data, validate_file_exists
-from srt_dubbing.src.config import AUDIO, STRATEGY, MODEL, VALIDATION
+from srt_dubbing.src.config import AUDIO, STRATEGY, MODEL, VALIDATION, LOG
 from srt_dubbing.src.srt_parser import SRTEntry
 from srt_dubbing.src.strategies.base_strategy import TimeSyncStrategy
 from srt_dubbing.src.logger import get_logger, create_process_logger
