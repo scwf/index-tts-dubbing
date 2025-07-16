@@ -28,7 +28,8 @@ srt_dubbing/
 │       ├── __init__.py        # 策略注册
 │       ├── base_strategy.py   # 抽象基类
 │       ├── basic_strategy.py  # 基础策略
-│       └── stretch_strategy.py # 拉伸策略
+│       ├── stretch_strategy.py # 拉伸策略
+│       └── hq_stretch_strategy.py # 高质量拉伸策略
 └── README.md                  # 说明文档
 ```
 
@@ -137,6 +138,8 @@ python -m srt_dubbing.src.cli \
 | `basic` | 自然语音合成，可能与字幕时长不完全匹配 | 追求语音自然度，允许时长偏差 | ⭐⭐⭐⭐⭐ |
 | `stretch` | 通过时间拉伸精确匹配字幕时长 | 需要严格同步，可接受音质损失 | ⭐⭐⭐ |
 | `hq_stretch` | 高质量拉伸，在保证音质前提下调整时长 | 需要同步但更重视音质 | ⭐⭐⭐⭐ |
+| `intelligent` | 优先调整生成参数，再进行微幅拉伸 | 追求音质和同步的最佳平衡 | ⭐⭐⭐⭐ |
+| `iterative` | 多次生成以逼近目标时长，无拉伸 | 追求完美的语音质量，不计较处理时间 | ⭐⭐⭐⭐⭐ |
 
 ## 📋 输出示例
 

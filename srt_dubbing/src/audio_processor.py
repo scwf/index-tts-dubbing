@@ -55,7 +55,7 @@ class AudioProcessor:
         logger = get_logger()
         
         # 根据策略选择合并方式
-        if strategy_name in ["basic", "hq_stretch"]:
+        if strategy_name in ["basic", "hq_stretch", "iterative"]:
             if verbose:
                 logger.debug(f"使用自然拼接模式进行音频合并 (策略: {strategy_name})")
             return self._natural_concatenation(segments, verbose)

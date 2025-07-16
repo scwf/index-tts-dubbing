@@ -1,13 +1,9 @@
 """
-时间同步策略模块
+策略注册与发现模块
 
-提供多种时间同步策略，用于处理SRT字幕与音频的时间匹配：
-- BasicStrategy: 自然合成策略（基础版本）
-- SpeedAdjustStrategy: 语速调节策略（未来扩展）
-- HybridStrategy: 混合智能策略（未来扩展）
+该模块负责自动发现、导入和注册所有可用的时间同步策略。
 """
-
-import pkgutil
+import os
 import importlib
 from typing import Dict, Type, List
 from srt_dubbing.src.strategies.base_strategy import TimeSyncStrategy
@@ -22,19 +18,17 @@ def init_strategies():
     if _strategy_registry:
         return
 
-    # 动态发现和加载策略
-    package_path = __path__
-    package_name = __name__
-
-    for _, module_name, _ in pkgutil.walk_packages(package_path, prefix=f"{package_name}."):
-        if module_name.endswith(('_strategy')):
+    strategy_dir = os.path.dirname(__file__)
+    for filename in os.listdir(strategy_dir):
+        if filename.endswith("_strategy.py") and filename != "base_strategy.py":
+            module_name = filename[:-3]
             try:
-                module = importlib.import_module(module_name)
+                module = importlib.import_module(f".{module_name}", package=__package__)
                 for attr_name in dir(module):
                     attr = getattr(module, attr_name)
                     if isinstance(attr, type) and issubclass(attr, TimeSyncStrategy) and attr is not TimeSyncStrategy:
-                        # 实例化策略以获取名称
                         try:
+                            # 尝试无参数实例化以获取名称
                             strategy_instance = attr()
                             strategy_name = strategy_instance.name()
                             if strategy_name not in _strategy_registry:
@@ -42,8 +36,9 @@ def init_strategies():
                         except Exception:
                             # 忽略无法无参数实例化的类
                             pass
-            except ImportError:
-                print(f"警告: 导入策略模块 {module_name} 失败")
+            except ImportError as e:
+                print(f"动态导入策略模块 {module_name} 失败: {e}")
+
 
 def get_strategy(name: str) -> TimeSyncStrategy:
     """
@@ -53,6 +48,7 @@ def get_strategy(name: str) -> TimeSyncStrategy:
     if not strategy_class:
         raise ValueError(f"未找到名为 '{name}' 的策略。可用策略: {list_strategies()}")
     return strategy_class()
+
 
 def list_strategies() -> List[str]:
     """
