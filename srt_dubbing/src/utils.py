@@ -7,7 +7,7 @@
 import os
 import sys
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union
 import logging
 
 
@@ -29,18 +29,7 @@ def setup_project_path():
     return project_root
 
 
-def safe_import_indextts():
-    """
-    安全导入 IndexTTS，处理导入失败的情况
-    
-    Returns:
-        tuple: (IndexTTS_class_or_None, is_available: bool)
-    """
-    try:
-        from indextts.infer import IndexTTS
-        return IndexTTS, True
-    except ImportError as e:
-        return None, False
+
 
 
 def validate_file_exists(file_path: str, file_type: str = "文件") -> bool:
@@ -150,7 +139,7 @@ class ProgressLogger:
         self.current_item = 0
         self.description = description
     
-    def update(self, item_index: int, item_description: str = ""):
+    def update(self, item_index: int, item_description: str = "") -> None:
         """更新进度"""
         self.current_item = item_index + 1
         progress = (self.current_item / self.total_items) * 100
@@ -161,12 +150,12 @@ class ProgressLogger:
         else:
             print(f"{self.description} {self.current_item}/{self.total_items} ({progress:.1f}%)")
     
-    def complete(self):
+    def complete(self) -> None:
         """完成进度"""
         print(f"✓ {self.description}完成，共处理 {self.total_items} 项")
 
 
-def normalize_audio_data(audio_data_int16, normalization_factor: float = None):
+def normalize_audio_data(audio_data_int16, normalization_factor: Optional[float] = None):
     """
     规范化音频数据
     
@@ -186,7 +175,7 @@ def normalize_audio_data(audio_data_int16, normalization_factor: float = None):
     return audio_data_int16.flatten().astype(np.float32) / normalization_factor
 
 
-def handle_exception_with_fallback(operation_name: str, fallback_value=None):
+def handle_exception_with_fallback(operation_name: str, fallback_value: Any = None):
     """
     异常处理装饰器，提供回退值
     
@@ -231,9 +220,8 @@ def initialize_project():
     初始化项目环境
     
     Returns:
-        tuple: (project_root_path, indextts_available)
+        Path: project_root_path
     """
     project_root = setup_project_path()
-    _, indextts_available = safe_import_indextts()
     
-    return project_root, indextts_available 
+    return project_root 

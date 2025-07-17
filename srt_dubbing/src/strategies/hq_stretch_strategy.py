@@ -9,23 +9,23 @@ import librosa
 from typing import List, Dict, Any, Optional
 
 # 使用绝对导入
-from srt_dubbing.src.utils import setup_project_path, safe_import_indextts, normalize_audio_data
+from srt_dubbing.src.utils import setup_project_path, normalize_audio_data
 from srt_dubbing.src.config import AUDIO, STRATEGY, MODEL, LOG
 from srt_dubbing.src.srt_parser import SRTEntry
 from srt_dubbing.src.strategies.base_strategy import TimeSyncStrategy
 from srt_dubbing.src.logger import get_logger, create_process_logger
+from indextts.infer import IndexTTS
 
 # 初始化项目环境
 setup_project_path()
-IndexTTS, _indextts_available = safe_import_indextts()
 
 
 class HighQualityStretchStrategy(TimeSyncStrategy):
     """高质量时间拉伸策略实现"""
 
     def __init__(self, 
-                 max_speed_ratio: float = None,
-                 min_speed_ratio: float = None):
+                 max_speed_ratio: Optional[float] = None,
+                 min_speed_ratio: Optional[float] = None):
         """
         初始化高质量拉伸策略
         
@@ -33,11 +33,10 @@ class HighQualityStretchStrategy(TimeSyncStrategy):
             max_speed_ratio: 最大语速比例 (默认: 1.3, 保证音质)
             min_speed_ratio: 最小语速比例 (默认: 0.8, 保证音质)
         """
+        super().__init__()
         # 使用更保守的默认值
         self.max_speed_ratio = max_speed_ratio or STRATEGY.HIGH_QUALITY_MAX_SPEED
         self.min_speed_ratio = min_speed_ratio or STRATEGY.HIGH_QUALITY_MIN_SPEED
-        self.tts_model = None
-        self._indextts_available = _indextts_available
     
     def name(self) -> str:
         """策略名称"""
@@ -62,24 +61,12 @@ class HighQualityStretchStrategy(TimeSyncStrategy):
         Returns:
             音频片段信息列表
         """
-        if not self._indextts_available:
-            raise RuntimeError("IndexTTS未安装，无法进行语音合成")
+        # IndexTTS已直接导入，可以使用
             
         logger = get_logger()
-        if self.tts_model is None:
-            model_dir = kwargs.get('model_dir', MODEL.DEFAULT_MODEL_DIR)
-            cfg_path = kwargs.get('cfg_path', MODEL.get_default_config_path(model_dir))
-            try:
-                logger.step("加载IndexTTS模型")
-                self.tts_model = IndexTTS(
-                    cfg_path=cfg_path,
-                    model_dir=model_dir,
-                    is_fp16=MODEL.DEFAULT_FP16
-                )
-                logger.success(f"IndexTTS模型加载成功: {model_dir}")
-            except Exception as e:
-                logger.error(f"IndexTTS模型加载失败: {e}")
-                raise RuntimeError(f"加载IndexTTS模型失败: {e}")
+        model_dir = kwargs.get('model_dir', MODEL.DEFAULT_MODEL_DIR)
+        cfg_path = kwargs.get('cfg_path', MODEL.get_default_config_path(model_dir))
+        self.ensure_model_initialized(model_dir, cfg_path)
         
         voice_reference = kwargs.get('voice_reference')
         if not voice_reference:
@@ -99,6 +86,7 @@ class HighQualityStretchStrategy(TimeSyncStrategy):
                 process_logger.progress(i + 1, len(entries), f"条目 {entry.index}: {text_preview}")
                 
                 # 1. 合成原始语音
+                assert self.tts_model is not None, "TTS模型未初始化，请先调用ensure_model_initialized"
                 sampling_rate, audio_data_int16 = self.tts_model.infer(
                     text=entry.text,
                     audio_prompt=voice_reference,
@@ -147,7 +135,7 @@ class HighQualityStretchStrategy(TimeSyncStrategy):
         
         process_logger.complete(f"生成 {len(audio_segments)} 个音频片段")
         return audio_segments
-    
+
     def _high_quality_time_adjustment(self, audio_data: np.ndarray, rate: float, 
                                      sampling_rate: int, entry: SRTEntry, 
                                      verbose: bool, logger) -> np.ndarray:
@@ -233,4 +221,13 @@ class HighQualityStretchStrategy(TimeSyncStrategy):
         elif rate_diff <= 0.25:  # 25%以内
             return "中"
         else:
-            return "高" 
+            return "高"
+
+# 注册策略（避免循环导入）
+def _register_hq_stretch_strategy():
+    """注册高质量拉伸策略"""
+    from srt_dubbing.src.strategies import _strategy_registry
+    _strategy_registry['hq_stretch'] = HighQualityStretchStrategy
+
+# 在模块导入时自动注册
+_register_hq_stretch_strategy() 

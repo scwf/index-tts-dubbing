@@ -14,20 +14,17 @@ from typing import List, Dict, Any
 from srt_dubbing.src.strategies.base_strategy import TimeSyncStrategy
 from srt_dubbing.src.logger import get_logger
 from srt_dubbing.src.srt_parser import SRTEntry
-from srt_dubbing.src.utils import safe_import_indextts, normalize_audio_data
-from srt_dubbing.src.config import MODEL, STRATEGY
+from srt_dubbing.src.utils import normalize_audio_data
+from srt_dubbing.src.config import STRATEGY, AUDIO
 
 logger = get_logger()
-IndexTTS, _indextts_available = safe_import_indextts()
 
 class IterativeStrategy(TimeSyncStrategy):
     """
     通过迭代调整生成参数，逼近目标时长的策略实现。
     """
     def __init__(self):
-        if not _indextts_available:
-            raise RuntimeError("IndexTTS未安装，无法使用此策略")
-        self.tts_model = None
+        super().__init__()
         # 迭代策略的超参数
         self.max_attempts = 4  # 最大尝试次数
         self.tolerance = 0.05  # 5%的成功容忍误差
@@ -45,6 +42,7 @@ class IterativeStrategy(TimeSyncStrategy):
         return len(audio_data) / sample_rate
 
     def _generate_audio(self, text: str, voice_reference: str, **generation_kwargs) -> Dict[str, Any]:
+        assert self.tts_model is not None, "TTS模型未初始化，请先调用ensure_model_initialized"
         sampling_rate, audio_data_int16 = self.tts_model.infer(
             text=text, audio_prompt=voice_reference, output_path=None, **generation_kwargs
         )
@@ -55,18 +53,7 @@ class IterativeStrategy(TimeSyncStrategy):
     def process_entries(
         self, entries: List[SRTEntry], voice_reference: str, model_dir: str, cfg_path: str, verbose: bool,
     ) -> List[Dict[str, Any]]:
-        if self.tts_model is None:
-            logger.step("加载IndexTTS模型 (iterative策略)")
-            try:
-                self.tts_model = IndexTTS(
-                    cfg_path=cfg_path or MODEL.get_default_config_path(model_dir),
-                    model_dir=model_dir or MODEL.DEFAULT_MODEL_DIR,
-                    is_fp16=MODEL.DEFAULT_FP16
-                )
-                logger.success("IndexTTS模型加载成功")
-            except Exception as e:
-                logger.error(f"IndexTTS模型加载失败: {e}")
-                raise RuntimeError(f"加载IndexTTS模型失败: {e}")
+        self.ensure_model_initialized(model_dir, cfg_path)
 
         audio_segments = []
         for i, entry in enumerate(entries):
@@ -81,8 +68,8 @@ class IterativeStrategy(TimeSyncStrategy):
                 else:
                     # --- 迭代逻辑 ---
                     length_penalty = 0.0
-                    best_result = None
-                    min_diff = float('inf')
+                    best_result = self._generate_audio(entry.text, voice_reference)  # 确保有初始值
+                    min_diff = abs(best_result["duration"] - target_duration)
 
                     for attempt in range(self.max_attempts):
                         logger.info(f"{progress_prefix}: 第 {attempt + 1}/{self.max_attempts} 次尝试 (penalty: {length_penalty:.2f})")
@@ -124,7 +111,7 @@ class IterativeStrategy(TimeSyncStrategy):
 
             except Exception as e:
                 logger.error(f"处理条目 {i+1} 失败: {e}")
-                sample_rate = self.tts_model.bigvgan.h.sampling_rate if self.tts_model else MODEL.DEFAULT_SAMPLE_RATE
+                sample_rate = self.tts_model.bigvgan.h.sampling_rate if self.tts_model else AUDIO.DEFAULT_SAMPLE_RATE
                 silent_data = np.zeros(int(target_duration * sample_rate), dtype=np.float32)
                 audio_segments.append({
                     "audio_data": silent_data,
@@ -134,4 +121,13 @@ class IterativeStrategy(TimeSyncStrategy):
                     "text": f"[静音] {entry.text}",
                 })
 
-        return audio_segments 
+        return audio_segments
+
+# 注册策略（避免循环导入）
+def _register_iterative_strategy():
+    """注册迭代生成策略"""
+    from srt_dubbing.src.strategies import _strategy_registry
+    _strategy_registry['iterative'] = IterativeStrategy
+
+# 在模块导入时自动注册
+_register_iterative_strategy() 

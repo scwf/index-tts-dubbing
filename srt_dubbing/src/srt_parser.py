@@ -82,10 +82,10 @@ class SRTParser:
             ValueError: 文件格式错误
         """
         logger = get_logger()
-        logger.step(f"读取SRT文件", f"文件: {file_path}")
+        logger.step(f"读取SRT文件: {file_path}")
         
-        file_path = Path(file_path)
-        if not file_path.exists():
+        srt_file = Path(file_path)
+        if not srt_file.exists():
             raise FileNotFoundError(f"SRT文件不存在: {file_path}")
         
         try:

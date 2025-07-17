@@ -5,7 +5,7 @@
 """
 
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import os
 
 
@@ -52,7 +52,7 @@ class ModelConfig:
     DEFAULT_CONFIG_FILE = "config.yaml"
     
     @classmethod
-    def get_default_config_path(cls, model_dir: str = None) -> str:
+    def get_default_config_path(cls, model_dir: Optional[str] = None) -> str:
         """获取默认配置文件路径"""
         model_dir = model_dir or cls.DEFAULT_MODEL_DIR
         return os.path.join(model_dir, cls.DEFAULT_CONFIG_FILE)

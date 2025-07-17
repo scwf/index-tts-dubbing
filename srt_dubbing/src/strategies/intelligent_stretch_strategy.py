@@ -8,7 +8,7 @@
 import os
 import tempfile
 import time
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 import torchaudio
 import numpy as np
@@ -18,25 +18,22 @@ from srt_dubbing.src.strategies.base_strategy import TimeSyncStrategy
 from srt_dubbing.src.audio_processor import AudioProcessor
 from srt_dubbing.src.logger import get_logger
 from srt_dubbing.src.srt_parser import SRTEntry
-from srt_dubbing.src.utils import safe_import_indextts, normalize_audio_data
-from srt_dubbing.src.config import MODEL, STRATEGY
+from srt_dubbing.src.utils import normalize_audio_data
+from srt_dubbing.src.config import MODEL, STRATEGY, AUDIO
+from indextts.infer import IndexTTS
 
 
 logger = get_logger()
-IndexTTS, _indextts_available = safe_import_indextts()
 
 
 class IntelligentStretchStrategy(TimeSyncStrategy):
     """
     智能拉伸策略：优先调整语速，最后微调音频长度，平衡音质和同步。
     """
-    def __init__(self, model_path: str = None, hq_voice: bool = False, voice_rate: str = None):
-        super().__init__("intelligent", "智能拉伸策略：优先调整语速，最后微调音频长度。")
+    def __init__(self, model_path: Optional[str] = None, hq_voice: bool = False, voice_rate: Optional[str] = None):
+        super().__init__()
         self.model_path = model_path
         self.hq_voice = hq_voice
-        if not _indextts_available:
-            raise RuntimeError("IndexTTS未安装，无法使用此策略")
-        self.tts_model = None
         self.max_speed_ratio = STRATEGY.MAX_SPEED_RATIO
         self.min_speed_ratio = STRATEGY.MIN_SPEED_RATIO
 
@@ -58,6 +55,7 @@ class IntelligentStretchStrategy(TimeSyncStrategy):
 
     def _generate_audio(self, text: str, voice_reference: str, **generation_kwargs) -> Dict[str, Any]:
         """封装TTS生成逻辑"""
+        assert self.tts_model is not None, "TTS模型未初始化，请先调用ensure_model_initialized"
         sampling_rate, audio_data_int16 = self.tts_model.infer(
             text=text,
             audio_prompt=voice_reference,
@@ -83,18 +81,7 @@ class IntelligentStretchStrategy(TimeSyncStrategy):
     ) -> List[Dict[str, Any]]:
         
         # 1. 初始化模型（如果需要）
-        if self.tts_model is None:
-            logger.step("加载IndexTTS模型 (intelligent策略)")
-            try:
-                self.tts_model = IndexTTS(
-                    cfg_path=cfg_path or MODEL.get_default_config_path(model_dir),
-                    model_dir=model_dir or MODEL.DEFAULT_MODEL_DIR,
-                    is_fp16=MODEL.DEFAULT_FP16
-                )
-                logger.success("IndexTTS模型加载成功")
-            except Exception as e:
-                logger.error(f"IndexTTS模型加载失败: {e}")
-                raise RuntimeError(f"加载IndexTTS模型失败: {e}")
+        self.ensure_model_initialized(model_dir, cfg_path)
         
         processor = AudioProcessor()
         audio_segments = []
@@ -177,7 +164,7 @@ class IntelligentStretchStrategy(TimeSyncStrategy):
 
                 except Exception as e:
                     logger.error(f"处理条目 {i+1} 失败: {e}")
-                    sample_rate = self.tts_model.bigvgan.h.sampling_rate if self.tts_model else MODEL.DEFAULT_SAMPLE_RATE
+                    sample_rate = self.tts_model.bigvgan.h.sampling_rate if self.tts_model else AUDIO.DEFAULT_SAMPLE_RATE
                     silent_data = self._create_silent_segment(target_duration if target_duration > 0.1 else 0.1, sample_rate)
                     audio_segments.append({
                         "audio_data": silent_data,
@@ -186,4 +173,13 @@ class IntelligentStretchStrategy(TimeSyncStrategy):
                         "index": entry.index,
                         "text": f"[静音] {entry.text}",
                     })
-        return audio_segments 
+        return audio_segments
+
+# 注册策略（避免循环导入）
+def _register_intelligent_stretch_strategy():
+    """注册智能拉伸策略"""
+    from srt_dubbing.src.strategies import _strategy_registry
+    _strategy_registry['intelligent'] = IntelligentStretchStrategy
+
+# 在模块导入时自动注册
+_register_intelligent_stretch_strategy() 

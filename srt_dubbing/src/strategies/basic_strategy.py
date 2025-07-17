@@ -9,24 +9,24 @@ from typing import List, Dict, Any, Optional
 import os
 
 # 使用绝对导入，更清晰明确
-from srt_dubbing.src.utils import setup_project_path, safe_import_indextts, normalize_audio_data, validate_file_exists
+from srt_dubbing.src.utils import setup_project_path, normalize_audio_data, validate_file_exists
 from srt_dubbing.src.config import AUDIO, STRATEGY, MODEL, VALIDATION, LOG
 from srt_dubbing.src.srt_parser import SRTEntry
 from srt_dubbing.src.strategies.base_strategy import TimeSyncStrategy
 from srt_dubbing.src.logger import get_logger, create_process_logger
+from indextts.infer import IndexTTS
 
 # 初始化项目环境
 setup_project_path()
-IndexTTS, _indextts_available = safe_import_indextts()
-
 
 class BasicStrategy(TimeSyncStrategy):
     """基础自然合成策略实现"""
     
     def __init__(self, 
-                 silence_threshold: float = None,
-                 max_speed_ratio: float = None,
-                 min_speed_ratio: float = None):
+                 silence_threshold: Optional[float] = None,
+                 max_speed_ratio: Optional[float] = None,
+                 min_speed_ratio: Optional[float] = None):
+        super().__init__()
         """
         初始化基础策略
         
@@ -38,8 +38,6 @@ class BasicStrategy(TimeSyncStrategy):
         self.silence_threshold = silence_threshold or STRATEGY.SILENCE_THRESHOLD
         self.max_speed_ratio = max_speed_ratio or STRATEGY.BASIC_MAX_SPEED_RATIO
         self.min_speed_ratio = min_speed_ratio or STRATEGY.BASIC_MIN_SPEED_RATIO
-        self.tts_model = None
-        self._indextts_available = _indextts_available
     
     def name(self) -> str:
         """策略名称"""
@@ -65,28 +63,10 @@ class BasicStrategy(TimeSyncStrategy):
         Returns:
             音频片段信息列表
         """
-        # 检查IndexTTS是否可用
-        if not self._indextts_available:
-            raise RuntimeError("IndexTTS未安装，无法进行语音合成")
-            
-        # 初始化TTS模型（延迟初始化）
-        logger = get_logger()
-        if self.tts_model is None:
-            model_dir = kwargs.get('model_dir', MODEL.DEFAULT_MODEL_DIR)
-            cfg_path = kwargs.get('cfg_path', MODEL.get_default_config_path(model_dir))
-            
-            try:
-                logger.step("加载IndexTTS模型")
-                self.tts_model = IndexTTS(
-                    cfg_path=cfg_path,
-                    model_dir=model_dir,
-                    is_fp16=MODEL.DEFAULT_FP16
-                )
-                logger.success(f"IndexTTS模型加载成功: {model_dir}")
-                logger.debug(f"使用配置文件: {cfg_path}")
-            except Exception as e:
-                logger.error(f"IndexTTS模型加载失败: {e}")
-                raise RuntimeError(f"加载IndexTTS模型失败: {e}")
+        # 确保TTS模型已初始化
+        model_dir = kwargs.get('model_dir', MODEL.DEFAULT_MODEL_DIR)
+        cfg_path = kwargs.get('cfg_path', MODEL.get_default_config_path(model_dir))
+        self.ensure_model_initialized(model_dir, cfg_path)
         
         voice_reference = kwargs.get('voice_reference')
         if not voice_reference:
@@ -94,6 +74,7 @@ class BasicStrategy(TimeSyncStrategy):
         
         validate_file_exists(voice_reference, "参考语音文件")
         
+        logger = get_logger()
         verbose = kwargs.get('verbose', False)
         audio_segments = []
         
@@ -161,6 +142,9 @@ class BasicStrategy(TimeSyncStrategy):
         if not voice_reference:
             raise ValueError("synthesize_text需要voice_reference")
         
+        # 确保模型已初始化
+        assert self.tts_model is not None, "TTS模型未初始化，请先调用ensure_model_initialized"
+        
         # 调用infer，触发内存返回模式
         sampling_rate, audio_data_int16 = self.tts_model.infer(
             text=text,
@@ -173,7 +157,7 @@ class BasicStrategy(TimeSyncStrategy):
         
         return audio_data_float32
 
-    def add_silence(self, duration: float, sample_rate: int = None) -> np.ndarray:
+    def add_silence(self, duration: float, sample_rate: Optional[int] = None) -> np.ndarray:
         """
         生成指定时长的静音
         
@@ -249,3 +233,12 @@ class BasicStrategy(TimeSyncStrategy):
                 logger.warning(f"条目 {entry.index} 结束时间不匹配")
         
         return True 
+
+# 注册策略（避免循环导入）
+def _register_basic_strategy():
+    """注册基础策略"""
+    from srt_dubbing.src.strategies import _strategy_registry
+    _strategy_registry['basic'] = BasicStrategy
+
+# 在模块导入时自动注册
+_register_basic_strategy() 

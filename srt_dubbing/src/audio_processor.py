@@ -18,7 +18,7 @@ from srt_dubbing.src.logger import get_logger
 class AudioProcessor:
     """音频处理器类"""
     
-    def __init__(self, sample_rate: int = None, channels: int = None):
+    def __init__(self, sample_rate: Optional[int] = None, channels: Optional[int] = None):
         """
         初始化音频处理器
         
@@ -235,7 +235,7 @@ class AudioProcessor:
         return merged_audio
 
     def add_silence_between_segments(self, segments: List[Dict[str, Any]], 
-                                   gap_duration: float = None) -> List[Dict[str, Any]]:
+                                   gap_duration: Optional[float] = None) -> List[Dict[str, Any]]:
         """
         在音频片段之间添加静音间隔
         
@@ -247,10 +247,11 @@ class AudioProcessor:
             添加间隔后的音频片段列表
         """
         # TODO: 实现静音间隔添加
-        pass
+        # 目前返回原始片段作为占位符
+        return segments
     
     def normalize_audio(self, audio_data: np.ndarray, 
-                       target_level: float = -20.0) -> np.ndarray:
+                       target_level: Optional[float] = -20.0) -> np.ndarray:
         """
         音频归一化处理
         
@@ -262,10 +263,11 @@ class AudioProcessor:
             归一化后的音频数据
         """
         # TODO: 实现音频归一化
-        pass
+        # 目前返回原始数据作为占位符
+        return audio_data
     
     def apply_fade(self, audio_data: np.ndarray, 
-                   fade_in: float = None, fade_out: float = None) -> np.ndarray:
+                   fade_in: Optional[float] = None, fade_out: Optional[float] = None) -> np.ndarray:
         """
         应用淡入淡出效果
         
@@ -278,7 +280,8 @@ class AudioProcessor:
             应用效果后的音频数据
         """
         # TODO: 实现淡入淡出效果
-        pass
+        # 目前返回原始数据作为占位符
+        return audio_data
     
     def resample_audio(self, audio_data: np.ndarray, 
                       source_rate: int, target_rate: int) -> np.ndarray:
@@ -393,3 +396,59 @@ class AudioProcessor:
             'rms_level': rms_level,
             'sample_count': len(audio_data)
         } 
+
+    def merge_audio_segments_with_gaps(self, 
+                                      segments: List[Dict[str, Any]], 
+                                      gap_duration: Optional[float] = None) -> List[Dict[str, Any]]:
+        """
+        在音频片段间添加间隔
+        
+        Args:
+            segments: 音频片段列表
+            gap_duration: 间隔时长（秒）
+            
+        Returns:
+            处理后的音频片段列表
+        """
+        gap_duration = gap_duration or AUDIO.DEFAULT_GAP_DURATION
+        
+        if not segments:
+            return []
+        
+        # 添加间隔的逻辑实现
+        processed_segments = []
+        for i, segment in enumerate(segments):
+            processed_segments.append(segment)
+            
+            # 最后一个片段后不添加间隔
+            if i < len(segments) - 1:
+                gap_samples = int(gap_duration * self.sample_rate)
+                gap_audio = np.zeros(gap_samples, dtype=np.float32)
+                
+                gap_segment = {
+                    'audio_data': gap_audio,
+                    'start_time': segment['end_time'],
+                    'end_time': segment['end_time'] + gap_duration,
+                    'text': '[间隔]',
+                    'index': f"{segment['index']}_gap",
+                    'duration': gap_duration
+                }
+                processed_segments.append(gap_segment)
+        
+        return processed_segments
+
+    def apply_fade_effects(self, audio_data: np.ndarray, 
+                          fade_in: Optional[float] = None, fade_out: Optional[float] = None) -> np.ndarray:
+        """
+        应用淡入淡出效果（使用apply_fade的包装函数）
+        
+        Args:
+            audio_data: 音频数据
+            fade_in: 淡入时长（秒）
+            fade_out: 淡出时长（秒）
+        
+        Returns:
+            应用效果后的音频数据
+        """
+        # 调用已有的apply_fade方法
+        return self.apply_fade(audio_data, fade_in, fade_out) 

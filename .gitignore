@@ -17,3 +17,4 @@ model-dir/
 output/
 refer_voice/
 srt-dir/
+.cursor/
