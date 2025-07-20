@@ -1,79 +1,79 @@
 """
-策略注册与发现模块
+策略注册与工厂
 
-简化的策略注册系统，每个策略模块自行注册。
+此模块负责动态发现、注册所有可用的时间同步策略，并提供一个工厂函数
+来实例化选定的策略。
 """
-from typing import Dict, Type, List
+from __future__ import annotations
+from typing import Dict, Type, Any, TYPE_CHECKING
+import inspect
+
 from srt_dubbing.src.strategies.base_strategy import TimeSyncStrategy
 
-# 全局注册表，用于存储所有策略
+if TYPE_CHECKING:
+    from srt_dubbing.src.tts_engines.base_engine import BaseTTSEngine
+
+# 策略注册表
 _strategy_registry: Dict[str, Type[TimeSyncStrategy]] = {}
 
-def init_strategies():
-    """
-    初始化所有策略（导入模块以触发自动注册）
-    """
-    if _strategy_registry:
-        return
+def _register_strategies():
+    """自动发现并注册所有策略类"""
+    from . import basic_strategy, stretch_strategy, hq_stretch_strategy, intelligent_stretch_strategy, iterative_strategy
     
-    # 导入所有策略模块，触发它们的自动注册
-    try:
-        from . import basic_strategy
-        from . import stretch_strategy  
-        from . import hq_stretch_strategy
-        from . import iterative_strategy
-        from . import intelligent_stretch_strategy
-    except ImportError as e:
-        print(f"导入策略模块失败: {e}")
+    # 将所有策略模块集中管理
+    strategy_modules = [
+        basic_strategy, 
+        stretch_strategy, 
+        hq_stretch_strategy, 
+        intelligent_stretch_strategy, 
+        iterative_strategy
+    ]
+    
+    for module in strategy_modules:
+        for name, obj in inspect.getmembers(module):
+            # 筛选出继承自TimeSyncStrategy的策略类
+            if inspect.isclass(obj) and issubclass(obj, TimeSyncStrategy) and obj is not TimeSyncStrategy:
+                # 使用策略实例的 name() 方法作为key
+                # 注意：这里我们不能实例化它来获取名字，所以约定类名的小写版本作为key
+                # 或者在类中定义一个静态的 `strategy_name` 属性。
+                # 为简单起见，我们先用类名的小写形式。
+                strategy_name = obj.__name__.replace('Strategy', '').lower()
+                _strategy_registry[strategy_name] = obj
+                
+_register_strategies()
 
-def get_strategy(name: str) -> TimeSyncStrategy:
+
+def get_strategy(name: str, tts_engine: 'BaseTTSEngine', **kwargs) -> 'TimeSyncStrategy':
     """
-    根据名称获取策略实例
-    
+    策略工厂函数
+
     Args:
         name: 策略名称
-        
+        tts_engine: TTS引擎实例
+        **kwargs: 策略特定的其他参数
+
     Returns:
         策略实例
-        
+    
     Raises:
-        ValueError: 找不到指定策略时抛出
+        ValueError: 如果找不到指定的策略
     """
-    if not _strategy_registry:
-        init_strategies()
-        
     strategy_class = _strategy_registry.get(name)
     if not strategy_class:
-        raise ValueError(f"未找到名为 '{name}' 的策略。可用策略: {list_strategies()}")
-    return strategy_class()
+        raise ValueError(f"未知策略: '{name}'. 可用策略: {list_available_strategies()}")
 
-def list_strategies() -> List[str]:
-    """
-    获取所有可用策略名称列表
-    
-    Returns:
-        策略名称列表
-    """
-    if not _strategy_registry:
-        init_strategies()
+    # 实例化策略，并注入TTS引擎和其它参数
+    return strategy_class(tts_engine=tts_engine, **kwargs)
+
+def list_available_strategies() -> list[str]:
+    """返回所有可用策略的名称列表"""
     return sorted(list(_strategy_registry.keys()))
 
-def get_strategy_info() -> Dict[str, str]:
-    """
-    获取所有策略的信息
+def get_strategy_description(name: str) -> str:
+    """获取指定策略的描述"""
+    strategy_class = _strategy_registry.get(name)
+    if not strategy_class:
+        return "未知策略"
     
-    Returns:
-        策略名称到描述的映射
-    """
-    if not _strategy_registry:
-        init_strategies()
-    
-    info = {}
-    for name, strategy_class in _strategy_registry.items():
-        try:
-            # 临时实例化获取描述
-            instance = strategy_class()
-            info[name] = instance.description()
-        except Exception:
-            info[name] = "策略描述获取失败"
-    return info 
+    # 直接调用静态方法获取描述
+    return strategy_class.description() 

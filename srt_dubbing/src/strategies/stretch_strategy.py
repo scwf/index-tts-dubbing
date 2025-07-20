@@ -6,33 +6,34 @@
 """
 import numpy as np
 import librosa
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from srt_dubbing.src.tts_engines.base_engine import BaseTTSEngine
 
 # 使用绝对导入，更清晰明确
-from srt_dubbing.src.utils import setup_project_path, normalize_audio_data, ProgressLogger
-from srt_dubbing.src.config import AUDIO, STRATEGY, MODEL, LOG
+from srt_dubbing.src.utils import ProgressLogger
+from srt_dubbing.src.config import AUDIO, STRATEGY, LOG
 from srt_dubbing.src.srt_parser import SRTEntry
 from srt_dubbing.src.strategies.base_strategy import TimeSyncStrategy
 from srt_dubbing.src.logger import get_logger, create_process_logger
-from indextts.infer import IndexTTS
-
-# 初始化项目环境
-setup_project_path()
 
 class StretchStrategy(TimeSyncStrategy):
     """时间拉伸同步策略实现"""
 
     def __init__(self, 
+                 tts_engine: 'BaseTTSEngine',
                  max_speed_ratio: Optional[float] = None,
                  min_speed_ratio: Optional[float] = None):
         """
         初始化时间拉伸策略
         
         Args:
+            tts_engine: TTS引擎实例
             max_speed_ratio: 最大语速比例 (例如2.0表示最快加速一倍)
             min_speed_ratio: 最小语速比例 (例如0.5表示最慢减速一半)
         """
-        super().__init__()
+        super().__init__(tts_engine)
         self.max_speed_ratio = max_speed_ratio or STRATEGY.MAX_SPEED_RATIO
         self.min_speed_ratio = min_speed_ratio or STRATEGY.MIN_SPEED_RATIO
     
@@ -40,7 +41,8 @@ class StretchStrategy(TimeSyncStrategy):
         """策略名称"""
         return "stretch"
 
-    def description(self) -> str:
+    @staticmethod
+    def description() -> str:
         """策略描述"""
         return "时间拉伸策略：通过改变语速来精确匹配字幕时长"
 
@@ -52,18 +54,11 @@ class StretchStrategy(TimeSyncStrategy):
             entries: SRT条目列表
             **kwargs: 可选参数
                 - voice_reference: 参考语音文件路径
-                - model_dir: 模型目录路径
-                - cfg_path: 配置文件路径
                 - verbose: 详细输出
         
         Returns:
             音频片段信息列表
         """
-        # 确保TTS模型已初始化
-        model_dir = kwargs.get('model_dir', MODEL.DEFAULT_MODEL_DIR)
-        cfg_path = kwargs.get('cfg_path', MODEL.get_default_config_path(model_dir))
-        self.ensure_model_initialized(model_dir, cfg_path)
-        
         logger = get_logger()
         voice_reference = kwargs.get('voice_reference')
         if not voice_reference:
@@ -82,14 +77,12 @@ class StretchStrategy(TimeSyncStrategy):
                 text_preview = entry.text[:LOG.PROGRESS_TEXT_PREVIEW_LENGTH] + "..." if len(entry.text) > LOG.PROGRESS_TEXT_PREVIEW_LENGTH else entry.text
                 process_logger.progress(i + 1, len(entries), f"条目 {entry.index}: {text_preview}")
                 
-                # 1. 合成原始语音
-                assert self.tts_model is not None, "TTS模型未初始化，请先调用ensure_model_initialized"
-                sampling_rate, audio_data_int16 = self.tts_model.infer(
+                # 1. 合成原始语音 - 使用注入的TTS引擎
+                assert self.tts_engine is not None, "TTS引擎未被注入"
+                audio_data, sampling_rate = self.tts_engine.synthesize(
                     text=entry.text,
-                    audio_prompt=voice_reference,
-                    output_path=None  # 内存返回模式
+                    voice_wav=voice_reference
                 )
-                audio_data = normalize_audio_data(audio_data_int16)  # 规范化到 [-1, 1] 范围
                 
                 # 2. 计算时长和变速比例
                 source_duration = len(audio_data) / sampling_rate
@@ -158,7 +151,9 @@ class StretchStrategy(TimeSyncStrategy):
             except Exception as e:
                 logger.error(f"条目 {entry.index} 处理失败: {e}")
                 # 后备方案：创建静音片段
-                silence_data = np.zeros(int(entry.duration * sampling_rate), dtype=np.float32)  # 使用动态采样率
+                # 使用配置中的默认采样率来创建静音片段，以避免在引擎加载失败时出错
+                default_sr = AUDIO.DEFAULT_SAMPLE_RATE
+                silence_data = np.zeros(int(entry.duration * default_sr), dtype=np.float32)
                 segment = {
                     'audio_data': silence_data,
                     'start_time': entry.start_time,
@@ -172,11 +167,11 @@ class StretchStrategy(TimeSyncStrategy):
         process_logger.complete(f"生成 {len(audio_segments)} 个音频片段")
         return audio_segments
 
-# 注册策略（避免循环导入）
-def _register_stretch_strategy():
-    """注册时间拉伸策略"""
-    from srt_dubbing.src.strategies import _strategy_registry
-    _strategy_registry['stretch'] = StretchStrategy
+# 注册逻辑将移至 __init__.py 中，以更好地管理
+# def _register_stretch_strategy():
+#     """注册时间拉伸策略"""
+#     from srt_dubbing.src.strategies import _strategy_registry
+#     _strategy_registry['stretch'] = StretchStrategy
 
-# 在模块导入时自动注册
-_register_stretch_strategy() 
+# # 在模块导入时自动注册
+# _register_stretch_strategy() 

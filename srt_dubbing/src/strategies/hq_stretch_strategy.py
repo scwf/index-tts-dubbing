@@ -6,43 +6,45 @@
 """
 import numpy as np
 import librosa
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from srt_dubbing.src.tts_engines.base_engine import BaseTTSEngine
 
 # 使用绝对导入
-from srt_dubbing.src.utils import setup_project_path, normalize_audio_data
-from srt_dubbing.src.config import AUDIO, STRATEGY, MODEL, LOG
+from srt_dubbing.src.config import AUDIO, STRATEGY, LOG
 from srt_dubbing.src.srt_parser import SRTEntry
 from srt_dubbing.src.strategies.base_strategy import TimeSyncStrategy
 from srt_dubbing.src.logger import get_logger, create_process_logger
-from indextts.infer import IndexTTS
-
-# 初始化项目环境
-setup_project_path()
 
 
 class HighQualityStretchStrategy(TimeSyncStrategy):
     """高质量时间拉伸策略实现"""
 
     def __init__(self, 
+                 tts_engine: 'BaseTTSEngine',
                  max_speed_ratio: Optional[float] = None,
                  min_speed_ratio: Optional[float] = None):
         """
         初始化高质量拉伸策略
         
         Args:
+            tts_engine: TTS引擎实例
             max_speed_ratio: 最大语速比例 (默认: 1.3, 保证音质)
             min_speed_ratio: 最小语速比例 (默认: 0.8, 保证音质)
         """
-        super().__init__()
+        super().__init__(tts_engine)
         # 使用更保守的默认值
         self.max_speed_ratio = max_speed_ratio or STRATEGY.HIGH_QUALITY_MAX_SPEED
         self.min_speed_ratio = min_speed_ratio or STRATEGY.HIGH_QUALITY_MIN_SPEED
     
-    def name(self) -> str:
+    @staticmethod
+    def name() -> str:
         """策略名称"""
         return "hq_stretch"
 
-    def description(self) -> str:
+    @staticmethod
+    def description() -> str:
         """策略描述"""
         return "高质量拉伸策略：在保证音质的前提下进行时间调整"
 
@@ -54,20 +56,12 @@ class HighQualityStretchStrategy(TimeSyncStrategy):
             entries: SRT条目列表
             **kwargs: 可选参数
                 - voice_reference: 参考语音文件路径
-                - model_dir: 模型目录路径
-                - cfg_path: 配置文件路径
                 - verbose: 详细输出
         
         Returns:
             音频片段信息列表
         """
-        # IndexTTS已直接导入，可以使用
-            
         logger = get_logger()
-        model_dir = kwargs.get('model_dir', MODEL.DEFAULT_MODEL_DIR)
-        cfg_path = kwargs.get('cfg_path', MODEL.get_default_config_path(model_dir))
-        self.ensure_model_initialized(model_dir, cfg_path)
-        
         voice_reference = kwargs.get('voice_reference')
         if not voice_reference:
             raise ValueError("必须提供参考语音文件路径 (voice_reference)")
@@ -75,33 +69,25 @@ class HighQualityStretchStrategy(TimeSyncStrategy):
         verbose = kwargs.get('verbose', False)
         audio_segments = []
         
-        # 创建处理进度日志器
         process_logger = create_process_logger("高质量拉伸策略音频生成")
         process_logger.start(f"处理 {len(entries)} 个字幕条目")
         
         for i, entry in enumerate(entries):
             try:
-                # 显示进度
                 text_preview = entry.text[:LOG.PROGRESS_TEXT_PREVIEW_LENGTH] + "..." if len(entry.text) > LOG.PROGRESS_TEXT_PREVIEW_LENGTH else entry.text
                 process_logger.progress(i + 1, len(entries), f"条目 {entry.index}: {text_preview}")
                 
                 # 1. 合成原始语音
-                assert self.tts_model is not None, "TTS模型未初始化，请先调用ensure_model_initialized"
-                sampling_rate, audio_data_int16 = self.tts_model.infer(
+                audio_data, sampling_rate = self.tts_engine.synthesize(
                     text=entry.text,
-                    audio_prompt=voice_reference,
-                    output_path=None
+                    voice_wav=voice_reference
                 )
-                audio_data = normalize_audio_data(audio_data_int16)
                 
                 # 2. 计算时长和变速比例
                 source_duration = len(audio_data) / sampling_rate
                 target_duration = entry.duration
                 
-                if target_duration == 0:
-                    rate = 1.0
-                else:
-                    rate = source_duration / target_duration
+                rate = 1.0 if target_duration == 0 else source_duration / target_duration
                 
                 # 3. 高质量时间调整
                 processed_audio = self._high_quality_time_adjustment(
@@ -121,8 +107,7 @@ class HighQualityStretchStrategy(TimeSyncStrategy):
 
             except Exception as e:
                 logger.error(f"条目 {entry.index} 处理失败: {e}")
-                # 后备方案：创建静音片段
-                silence_data = np.zeros(int(entry.duration * sampling_rate), dtype=np.float32)
+                silence_data = np.zeros(int(entry.duration * AUDIO.DEFAULT_SAMPLE_RATE), dtype=np.float32)
                 segment = {
                     'audio_data': silence_data,
                     'start_time': entry.start_time,
@@ -141,32 +126,16 @@ class HighQualityStretchStrategy(TimeSyncStrategy):
                                      verbose: bool, logger) -> np.ndarray:
         """
         高质量时间调整处理
-        
-        Args:
-            audio_data: 原始音频数据
-            rate: 计算得出的变速比
-            sampling_rate: 采样率
-            entry: SRT条目
-            verbose: 详细模式
-            logger: 日志器
-            
-        Returns:
-            处理后的音频数据
         """
-        # 检查是否需要时间调整
         if abs(rate - 1.0) <= STRATEGY.TIME_STRETCH_THRESHOLD:
             if verbose:
                 logger.debug(f"条目 {entry.index} 时长匹配良好，无需调整")
             return audio_data
         
-        # 应用保守的变速限制
         clamped_rate = np.clip(rate, self.min_speed_ratio, self.max_speed_ratio)
-        
-        # 计算音质损失风险
         quality_risk = self._assess_quality_risk(rate, clamped_rate)
         
         if abs(clamped_rate - rate) > 0.01:
-            # 变速比被限制的情况
             speed_type = "加速" if rate > 1.0 else "减速"
             original_percent = abs(int((rate - 1.0) * 100))
             adjusted_percent = abs(int((clamped_rate - 1.0) * 100))
@@ -183,15 +152,12 @@ class HighQualityStretchStrategy(TimeSyncStrategy):
                     f"(音质影响: {quality_risk})"
                 )
         
-        # 执行高质量时间拉伸
         if abs(clamped_rate - 1.0) > STRATEGY.TIME_STRETCH_THRESHOLD:
-            # 使用优化的librosa参数
             stretched_audio = librosa.effects.time_stretch(
                 audio_data, 
                 rate=clamped_rate,
-                # 优化参数以提升音质
-                hop_length=512,    # 较小的hop_length以提升质量
-                n_fft=2048         # 较大的FFT窗口以减少伪影
+                hop_length=512,
+                n_fft=2048
             )
             
             if verbose:
@@ -206,28 +172,12 @@ class HighQualityStretchStrategy(TimeSyncStrategy):
     def _assess_quality_risk(self, original_rate: float, clamped_rate: float) -> str:
         """
         评估音质损失风险
-        
-        Args:
-            original_rate: 原始变速比
-            clamped_rate: 限制后的变速比
-            
-        Returns:
-            风险级别: "低", "中", "高"
         """
         rate_diff = abs(clamped_rate - 1.0)
         
-        if rate_diff <= 0.15:  # 15%以内
+        if rate_diff <= 0.15:
             return "低"
-        elif rate_diff <= 0.25:  # 25%以内
+        elif rate_diff <= 0.25:
             return "中"
         else:
-            return "高"
-
-# 注册策略（避免循环导入）
-def _register_hq_stretch_strategy():
-    """注册高质量拉伸策略"""
-    from srt_dubbing.src.strategies import _strategy_registry
-    _strategy_registry['hq_stretch'] = HighQualityStretchStrategy
-
-# 在模块导入时自动注册
-_register_hq_stretch_strategy() 
+            return "高" 
