@@ -1,11 +1,12 @@
 """
 策略抽象基类
 """
+from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from indextts.infer import IndexTTS
+from typing import List, Dict, Any, Optional
+from indextts.infer import IndexTTS
+from srt_dubbing.src.config import MODEL
+from srt_dubbing.src.logger import get_logger
 
 # 使用绝对导入和新的工具模块
 from srt_dubbing.src.utils import setup_project_path
@@ -19,8 +20,8 @@ class TimeSyncStrategy(ABC):
     """时间同步策略抽象基类"""
     
     def __init__(self):
-        # 类型注解会在运行时确定实际类型
-        self.tts_model: Optional['IndexTTS'] = None
+        # TTS模型实例，延迟初始化
+        self.tts_model: Optional[IndexTTS] = None
     
     def ensure_model_initialized(self, model_dir: str, cfg_path: Optional[str] = None) -> None:
         """
@@ -32,10 +33,6 @@ class TimeSyncStrategy(ABC):
         """
         if self.tts_model is not None:
             return
-            
-        from indextts.infer import IndexTTS
-        from srt_dubbing.src.config import MODEL
-        from srt_dubbing.src.logger import get_logger
         
         logger = get_logger()
         cfg_path = cfg_path or MODEL.get_default_config_path(model_dir)
