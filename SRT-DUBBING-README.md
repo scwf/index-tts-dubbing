@@ -100,6 +100,15 @@ python -m srt_dubbing.src.cli \
   --model-dir model-dir/index_tts \
   --verbose
 
+# 使用F5TTS引擎和自适应策略
+python -m srt_dubbing.src.cli \
+  --srt subtitles/movie.srt \
+  --voice voices/narrator.wav \
+  --output output/movie_f5.wav \
+  --tts-engine f5_tts \
+  --strategy adaptive \
+  --verbose
+
 # 假设未来有一个edge_tts引擎，可以这样切换
 # python -m srt_dubbing.src.cli \
 #   --srt subtitles/movie.srt \
@@ -141,7 +150,7 @@ python -m srt_dubbing.src.cli \
 | 参数 | 默认值 | 说明 | 示例 |
 |------|--------|------|------|
 | `--strategy` | `stretch` | 时间同步策略 | `--strategy basic` |
-| `--tts-engine` | `index_tts` | 选择TTS引擎 | `--tts-engine edge_tts` |
+| `--tts-engine` | `index_tts` | 选择TTS引擎。可用: `index_tts`, `f5_tts` | `--tts-engine f5_tts` |
 
 ### TTS引擎特定参数
 

@@ -61,6 +61,33 @@ class ModelConfig:
     DEFAULT_FP16 = True
 
 
+class F5TTSConfig:
+    """F5TTS引擎相关配置"""
+    # 参数源自 F5TTS_infer.md
+    MODEL = "F5TTS_v1_Base"
+    CKPT_FILE = None
+    VOCAB_FILE = None
+    ODE_METHOD = "euler"
+    USE_EMA = True
+    VOCODER_LOCAL_PATH = None
+    DEVICE = None
+    HF_CACHE_DIR = "model-dir/"
+
+    @classmethod
+    def get_init_kwargs(cls) -> Dict[str, Any]:
+        """获取用于F5TTS初始化的字典"""
+        return {
+            "model": cls.MODEL,
+            "ckpt_file": cls.CKPT_FILE,
+            "vocab_file": cls.VOCAB_FILE,
+            "ode_method": cls.ODE_METHOD,
+            "use_ema": cls.USE_EMA,
+            "vocoder_local_path": cls.VOCODER_LOCAL_PATH,
+            "device": cls.DEVICE,
+            "hf_cache_dir": cls.HF_CACHE_DIR,
+        }
+
+
 class PathConfig:
     """路径相关配置"""
     # 默认输出配置
@@ -99,6 +126,7 @@ CONFIG = {
     'audio': AudioConfig,
     'strategy': StrategyConfig,
     'model': ModelConfig,
+    'f5_tts': F5TTSConfig,
     'path': PathConfig,
     'validation': ValidationConfig,
     'log': LogConfig,
@@ -122,6 +150,7 @@ def get_config(category: str) -> Any:
 AUDIO = AudioConfig
 STRATEGY = StrategyConfig  
 MODEL = ModelConfig
+F5TTS = F5TTSConfig
 PATH = PathConfig
 VALIDATION = ValidationConfig
 LOG = LogConfig 

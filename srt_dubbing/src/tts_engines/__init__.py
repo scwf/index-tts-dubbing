@@ -4,12 +4,12 @@ from typing import Dict, Type, Any
 from .base_engine import BaseTTSEngine
 from .index_tts_engine import IndexTTSEngine
 # 当你添加新引擎时，在这里导入
-# from .edge_tts_engine import EdgeTTSEngine 
+from .f5_tts_engine import F5TTSEngine 
 
 # 引擎注册表
 TTS_ENGINES: Dict[str, Type['BaseTTSEngine']] = {
     "index_tts": IndexTTSEngine,
-    # "edge_tts": EdgeTTSEngine,
+    "f5_tts": F5TTSEngine,
 }
 
 def get_tts_engine(engine_name: str, config: Dict[str, Any]) -> 'BaseTTSEngine':
