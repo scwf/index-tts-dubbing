@@ -66,38 +66,83 @@ class IterativeStrategy(TimeSyncStrategy):
                     logger.warning(f"{progress_prefix}: 目标时长无效，回退到单次自然生成。")
                     best_result = self._generate_audio(entry.text, voice_reference)
                 else:
-                    # --- 迭代逻辑 ---
-                    length_penalty = 0.0
-                    best_result = self._generate_audio(entry.text, voice_reference)  # 确保有初始值
-                    min_diff = abs(best_result["duration"] - target_duration)
-
-                    for attempt in range(self.max_attempts):
-                        logger.info(f"{progress_prefix}: 第 {attempt + 1}/{self.max_attempts} 次尝试 (penalty: {length_penalty:.2f})")
+                    # --- 迭代逻辑优化版 ---
+                    all_results = []  # 存储所有尝试的结果
+                    length_penalty_values = [0.0]  # 从0开始的penalty序列
+                    
+                    # 第一次生成（基准）
+                    logger.info(f"{progress_prefix}: 基准生成 (penalty: 0.00)")
+                    base_result = self._generate_audio(entry.text, voice_reference, length_penalty=0.0)
+                    base_duration = base_result["duration"]
+                    base_diff = abs(base_duration - target_duration)
+                    
+                    all_results.append({
+                        "result": base_result,
+                        "penalty": 0.0,
+                        "duration": base_duration,
+                        "diff": base_diff,
+                        "attempt": 0
+                    })
+                    
+                    logger.info(f"{progress_prefix}: 基准生成完成，时长: {base_duration:.2f}s, 偏差: {base_diff:.2f}s")
+                    
+                    # 检查基准是否已经满足要求
+                    if base_diff / target_duration <= self.tolerance:
+                        logger.success(f"{progress_prefix}: 基准生成已满足精度要求!")
+                        best_result = base_result
+                    else:
+                        # 继续迭代优化
+                        length_penalty = 0.0
                         
-                        current_result = self._generate_audio(entry.text, voice_reference, length_penalty=float(length_penalty))
-                        current_duration = current_result["duration"]
+                        for attempt in range(1, self.max_attempts):
+                            # 根据当前最佳结果调整penalty
+                            current_best = min(all_results, key=lambda x: x["diff"])
+                            ratio = current_best["duration"] / target_duration
+                            adjustment = -(ratio - 1) * self.adjustment_factor
+                            length_penalty += adjustment
+                            length_penalty = np.clip(length_penalty, -2.0, 2.0)
+                            
+                            logger.info(f"{progress_prefix}: 第 {attempt}/{self.max_attempts-1} 次尝试 (penalty: {length_penalty:.2f})")
+                            
+                            current_result = self._generate_audio(entry.text, voice_reference, length_penalty=float(length_penalty))
+                            current_duration = current_result["duration"]
+                            
+                            if current_duration == 0:
+                                logger.warning(f"{progress_prefix}: 生成了静音音频，跳过此次尝试。")
+                                continue
+
+                            current_diff = abs(current_duration - target_duration)
+                            
+                            all_results.append({
+                                "result": current_result,
+                                "penalty": length_penalty,
+                                "duration": current_duration,
+                                "diff": current_diff,
+                                "attempt": attempt
+                            })
+                            
+                            logger.info(f"{progress_prefix}: 尝试 {attempt} 完成，时长: {current_duration:.2f}s, 偏差: {current_diff:.2f}s")
+
+                            # 检查是否达到精度要求
+                            if current_diff / target_duration <= self.tolerance:
+                                logger.success(f"{progress_prefix}: 在第 {attempt} 次尝试中成功匹配时长!")
+                                break
                         
-                        if current_duration == 0:
-                            logger.warning(f"{progress_prefix}: 生成了静音音频，跳过此次尝试。")
-                            continue
-
-                        diff = abs(current_duration - target_duration)
-
-                        if diff < min_diff:
-                            min_diff = diff
-                            best_result = current_result
-                            logger.debug(f"{progress_prefix}: 找到更优结果，时长偏差: {diff:.2f}s")
-
-                        if diff / target_duration <= self.tolerance:
-                            logger.success(f"{progress_prefix}: 在第 {attempt + 1} 次尝试中成功匹配时长!")
-                            break
-
-                        ratio = current_duration / target_duration
-                        adjustment = -(ratio - 1) * self.adjustment_factor
-                        length_penalty += adjustment
-                        length_penalty = np.clip(length_penalty, -2.0, 2.0)
-                    else: # for-else循环，当循环正常结束（未被break）时执行
-                        logger.warning(f"{progress_prefix}: 达到最大尝试次数，使用最接近的结果 (时长偏差: {min_diff:.2f}s)")
+                        # 选择所有尝试中的最佳结果
+                        best_attempt = min(all_results, key=lambda x: x["diff"])
+                        best_result = best_attempt["result"]
+                        
+                        # 输出详细的对比信息
+                        logger.info(f"{progress_prefix}: === 所有尝试对比 ===")
+                        best_attempt_num = best_attempt["attempt"]  # 获取最佳尝试的编号
+                        for r in all_results:
+                            status = "✅ 最佳" if r["attempt"] == best_attempt_num else "  "
+                            logger.info(f"{progress_prefix}: {status} 尝试{r['attempt']}: penalty={r['penalty']:.2f}, 时长={r['duration']:.2f}s, 偏差={r['diff']:.2f}s")
+                        
+                        if len(all_results) >= self.max_attempts:
+                            logger.warning(f"{progress_prefix}: 达到最大尝试次数，选择最佳结果 (时长偏差: {best_attempt['diff']:.2f}s)")
+                        else:
+                            logger.success(f"{progress_prefix}: 找到满足精度的结果!")
                 
                 # --- 使用最佳结果 ---
                 final_audio_data = best_result["audio_data"]
