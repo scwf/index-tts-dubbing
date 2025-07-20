@@ -9,7 +9,7 @@ import librosa
 from typing import List, Dict, Any, Optional
 
 from srt_dubbing.src.tts_engines.base_engine import BaseTTSEngine
-from srt_dubbing.src.utils import ProgressLogger
+from srt_dubbing.src.utils import ProgressLogger, time_stretch_hq
 from srt_dubbing.src.config import AUDIO, STRATEGY, LOG
 from srt_dubbing.src.srt_parser import SRTEntry
 from srt_dubbing.src.strategies.base_strategy import TimeSyncStrategy
@@ -106,7 +106,7 @@ class StretchStrategy(TimeSyncStrategy):
                             f"（原始变速比: {rate:.2f} → 调整后: {clamped_rate:.2f}）"
                         )
                     
-                    stretched_audio = librosa.effects.time_stretch(audio_data, rate=clamped_rate)
+                    stretched_audio = time_stretch_hq(audio_data, rate=clamped_rate, sr=sampling_rate)
                     
                     # 验证拉伸后的时长
                     actual_duration = len(stretched_audio) / sampling_rate

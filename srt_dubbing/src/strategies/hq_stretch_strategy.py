@@ -9,6 +9,8 @@ import librosa
 from typing import List, Dict, Any, Optional
 
 from srt_dubbing.src.tts_engines.base_engine import BaseTTSEngine
+# 使用我们新的高质量拉伸函数
+from srt_dubbing.src.utils import time_stretch_hq
 from srt_dubbing.src.config import AUDIO, STRATEGY, LOG
 from srt_dubbing.src.srt_parser import SRTEntry
 from srt_dubbing.src.strategies.base_strategy import TimeSyncStrategy
@@ -150,11 +152,11 @@ class HighQualityStretchStrategy(TimeSyncStrategy):
                 )
         
         if abs(clamped_rate - 1.0) > STRATEGY.TIME_STRETCH_THRESHOLD:
-            stretched_audio = librosa.effects.time_stretch(
+            # 调用新的高质量时间拉伸函数
+            stretched_audio = time_stretch_hq(
                 audio_data, 
                 rate=clamped_rate,
-                hop_length=512,
-                n_fft=2048
+                sr=sampling_rate
             )
             
             if verbose:

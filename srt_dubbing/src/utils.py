@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Union
 import logging
+import numpy as np
 
 
 def setup_project_path():
@@ -224,4 +225,50 @@ def initialize_project():
     """
     project_root = setup_project_path()
     
-    return project_root 
+    return project_root
+
+
+def time_stretch_hq(y: np.ndarray, rate: float, sr: int) -> np.ndarray:
+    """
+    高质量混合时间拉伸。
+    结合了两种不同算法（重采样+音高修正 和 相位声码器）的优点，
+    以获得更自然、瑕疵更少的音频效果。
+    
+    Args:
+        y (np.ndarray): 音频时间序列。
+        rate (float): 拉伸因子。 > 1 加速, < 1 减速。
+        sr (int): 音频采样率。
+        
+    Returns:
+        np.ndarray: 拉伸后的音频时间序列。
+    """
+
+    # todo：拉伸生成的语音质量较差，需要优化
+    import librosa
+    import numpy as np
+
+    if rate == 1.0:
+        return y
+
+    # --- 算法1: 重采样 + 音高修正 (清晰度高，保留瞬态) ---
+    y_resampled = librosa.resample(y, orig_sr=int(sr * rate), target_sr=sr)
+    n_steps = 12 * np.log2(rate)
+    y_hq = librosa.effects.pitch_shift(y_resampled, sr=sr, n_steps=-n_steps)
+
+    # --- 算法2: 相位声码器 (平滑度高，适合元音) ---
+    # 使用优化的参数以获得更好的质量
+    y_standard = librosa.effects.time_stretch(y, rate=rate, hop_length=512, n_fft=2048)
+
+    # --- 融合 ---
+    # 确保两个版本的长度一致，以 y_hq 为准，因为它长度更精确
+    target_len = len(y_hq)
+    y_standard = librosa.util.fix_length(y_standard, size=target_len)
+
+    # 设置混合权重 (可以根据实验调整)
+    weight_hq = 0.75
+    weight_standard = 1 - weight_hq
+
+    # 加权平均
+    y_hybrid = (y_hq * weight_hq) + (y_standard * weight_standard)
+
+    return y_hybrid 
