@@ -5,39 +5,33 @@
 来实例化选定的策略。
 """
 from __future__ import annotations
-from typing import Dict, Type, Any, TYPE_CHECKING
+from typing import Dict, Type, Any
 import inspect
 
 from srt_dubbing.src.strategies.base_strategy import TimeSyncStrategy
-
-if TYPE_CHECKING:
-    from srt_dubbing.src.tts_engines.base_engine import BaseTTSEngine
+from srt_dubbing.src.tts_engines.base_engine import BaseTTSEngine
 
 # 策略注册表
 _strategy_registry: Dict[str, Type[TimeSyncStrategy]] = {}
 
 def _register_strategies():
     """自动发现并注册所有策略类"""
-    from . import basic_strategy, stretch_strategy, hq_stretch_strategy, intelligent_stretch_strategy, iterative_strategy
+    from . import basic_strategy, stretch_strategy, hq_stretch_strategy, adaptive_strategy
     
     # 将所有策略模块集中管理
     strategy_modules = [
         basic_strategy, 
         stretch_strategy, 
         hq_stretch_strategy, 
-        intelligent_stretch_strategy, 
-        iterative_strategy
+        adaptive_strategy
     ]
     
     for module in strategy_modules:
         for name, obj in inspect.getmembers(module):
             # 筛选出继承自TimeSyncStrategy的策略类
             if inspect.isclass(obj) and issubclass(obj, TimeSyncStrategy) and obj is not TimeSyncStrategy:
-                # 使用策略实例的 name() 方法作为key
-                # 注意：这里我们不能实例化它来获取名字，所以约定类名的小写版本作为key
-                # 或者在类中定义一个静态的 `strategy_name` 属性。
-                # 为简单起见，我们先用类名的小写形式。
-                strategy_name = obj.__name__.replace('Strategy', '').lower()
+                # 调用静态的 name() 方法获取策略的正确名称
+                strategy_name = obj.name()
                 _strategy_registry[strategy_name] = obj
                 
 _register_strategies()

@@ -6,12 +6,9 @@
 """
 import numpy as np
 import librosa
-from typing import List, Dict, Any, Optional, TYPE_CHECKING
+from typing import List, Dict, Any, Optional
 
-if TYPE_CHECKING:
-    from srt_dubbing.src.tts_engines.base_engine import BaseTTSEngine
-
-# 使用绝对导入，更清晰明确
+from srt_dubbing.src.tts_engines.base_engine import BaseTTSEngine
 from srt_dubbing.src.utils import ProgressLogger
 from srt_dubbing.src.config import AUDIO, STRATEGY, LOG
 from srt_dubbing.src.srt_parser import SRTEntry
@@ -37,7 +34,8 @@ class StretchStrategy(TimeSyncStrategy):
         self.max_speed_ratio = max_speed_ratio or STRATEGY.MAX_SPEED_RATIO
         self.min_speed_ratio = min_speed_ratio or STRATEGY.MIN_SPEED_RATIO
     
-    def name(self) -> str:
+    @staticmethod
+    def name() -> str:
         """策略名称"""
         return "stretch"
 

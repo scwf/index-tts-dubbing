@@ -24,6 +24,19 @@ class BaseTTSEngine(ABC):
         """
         pass
 
+    def synthesize_to_duration(self, text: str, target_duration: float, **kwargs) -> Tuple[np.ndarray, int]:
+        """
+        （可选）合成一个精确匹配目标时长的音频。
+        引擎内部应实现自己的迭代或优化逻辑。
+
+        :param text: 需要合成的文本。
+        :param target_duration: 目标时长（秒）。
+        :param kwargs: 引擎特定的其他参数。
+        :return: 一个元组，包含音频数据 (NumPy array) 和采样率 (int)。
+        :raises: NotImplementedError 如果引擎不支持此功能。
+        """
+        raise NotImplementedError(f"引擎 '{type(self).__name__}' 不支持自适应时长合成。")
+
     @staticmethod
     @abstractmethod
     def get_config_model() -> Dict[str, Any]:

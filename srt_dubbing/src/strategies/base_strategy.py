@@ -3,12 +3,9 @@
 """
 from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional, TYPE_CHECKING
+from typing import List, Dict, Any
 
-# 使用类型检查保护，避免循环导入
-if TYPE_CHECKING:
-    from srt_dubbing.src.tts_engines.base_engine import BaseTTSEngine
-
+from srt_dubbing.src.tts_engines.base_engine import BaseTTSEngine
 from srt_dubbing.src.srt_parser import SRTEntry
 
 class TimeSyncStrategy(ABC):
@@ -23,8 +20,9 @@ class TimeSyncStrategy(ABC):
         """
         self.tts_engine = tts_engine
     
+    @staticmethod
     @abstractmethod
-    def name(self) -> str:
+    def name() -> str:
         """策略名称"""
         pass
     

@@ -1,78 +1,57 @@
 """
-基础自然合成策略
+自适应时长策略 (Adaptive Strategy)
 
-采用自然语音合成 + 静音填充的方式处理SRT字幕，
-优先保证语音质量，使用静音来匹配时间间隔。
+该策略直接调用TTS引擎的自适应合成功能，以生成一个
+与目标时长尽可能匹配的音频，而无需关心引擎内部的具体实现。
 """
 import numpy as np
 from typing import List, Dict, Any
 
 from srt_dubbing.src.tts_engines.base_engine import BaseTTSEngine
-from srt_dubbing.src.utils import validate_file_exists
-from srt_dubbing.src.config import AUDIO, LOG
-from srt_dubbing.src.srt_parser import SRTEntry
-from srt_dubbing.src.strategies.base_strategy import TimeSyncStrategy
+from .base_strategy import TimeSyncStrategy
 from srt_dubbing.src.logger import get_logger, create_process_logger
+from srt_dubbing.src.srt_parser import SRTEntry
+from srt_dubbing.src.config import AUDIO, LOG
 
-class BasicStrategy(TimeSyncStrategy):
-    """基础自然合成策略实现"""
-    
+logger = get_logger()
+
+class AdaptiveStrategy(TimeSyncStrategy):
+    """
+    通过调用引擎内置的自适应功能来匹配时长的策略。
+    """
     def __init__(self, tts_engine: 'BaseTTSEngine', **kwargs):
-        """
-        初始化基础策略
-        
-        Args:
-            tts_engine: TTS引擎实例
-        """
         super().__init__(tts_engine)
-    
+
     @staticmethod
     def name() -> str:
-        """策略名称"""
-        return "basic"
-    
+        return "adaptive"
+
     @staticmethod
     def description() -> str:
-        """策略描述"""
-        return "自然合成策略：使用自然语音合成，不进行时间拉伸"
-    
+        return "自适应策略：调用引擎的自适应功能以匹配时长，效果取决于引擎自身实现。"
+
     def process_entries(self, entries: List[SRTEntry], **kwargs) -> List[Dict[str, Any]]:
-        """
-        处理SRT条目，生成音频片段
-        
-        Args:
-            entries: SRT条目列表
-            **kwargs: 可选参数
-                - voice_reference: 参考语音文件路径
-                - verbose: 详细输出
-        
-        Returns:
-            音频片段信息列表
-        """
         voice_reference = kwargs.get('voice_reference')
         if not voice_reference:
             raise ValueError("必须提供参考语音文件路径 (voice_reference)")
         
-        validate_file_exists(voice_reference, "参考语音文件")
-        
-        logger = get_logger()
-        verbose = kwargs.get('verbose', False)
+        process_logger = create_process_logger("自适应策略音频生成")
         audio_segments = []
         
-        process_logger = create_process_logger("基础策略音频生成")
         process_logger.start(f"处理 {len(entries)} 个字幕条目")
         
         for i, entry in enumerate(entries):
             try:
-                text_preview = entry.text[:LOG.PROGRESS_TEXT_PREVIEW_LENGTH] + "..." if len(entry.text) > LOG.PROGRESS_TEXT_PREVIEW_LENGTH else entry.text
+                text_preview = entry.text[:LOG.PROGRESS_TEXT_PREVIEW_LENGTH] + "..."
                 process_logger.progress(i + 1, len(entries), f"条目 {entry.index}: {text_preview}")
-                
-                # 使用注入的TTS引擎合成语音
-                audio_data, _ = self.tts_engine.synthesize(
-                    text=entry.text, 
+
+                # 直接调用引擎的自适应方法
+                audio_data, _ = self.tts_engine.synthesize_to_duration(
+                    text=entry.text,
+                    target_duration=entry.duration,
                     voice_wav=voice_reference
                 )
-                
+
                 segment = {
                     'audio_data': audio_data,
                     'start_time': entry.start_time,
@@ -82,19 +61,26 @@ class BasicStrategy(TimeSyncStrategy):
                     'duration': entry.duration
                 }
                 audio_segments.append(segment)
-                
+
+            except NotImplementedError as e:
+                # 捕获引擎不支持此功能的错误
+                logger.error(f"处理失败: {e}")
+                logger.error(f"无法使用 '{self.name()}' 策略。请为 '{type(self.tts_engine).__name__}' 引擎选择其他策略。")
+                # 遇到不支持的引擎，直接终止处理
+                raise e
             except Exception as e:
                 logger.error(f"条目 {entry.index} 处理失败: {e}")
+                # 为失败的条目创建静音片段
                 silence_data = np.zeros(int(entry.duration * AUDIO.DEFAULT_SAMPLE_RATE), dtype=np.float32)
                 segment = {
                     'audio_data': silence_data,
                     'start_time': entry.start_time,
                     'end_time': entry.end_time,
-                    'text': entry.text,
+                    'text': f"[静音] {entry.text}",
                     'index': entry.index,
                     'duration': entry.duration
                 }
                 audio_segments.append(segment)
-        
+
         process_logger.complete(f"生成 {len(audio_segments)} 个音频片段")
         return audio_segments 

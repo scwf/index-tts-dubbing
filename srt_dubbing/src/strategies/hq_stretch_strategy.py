@@ -6,12 +6,9 @@
 """
 import numpy as np
 import librosa
-from typing import List, Dict, Any, Optional, TYPE_CHECKING
+from typing import List, Dict, Any, Optional
 
-if TYPE_CHECKING:
-    from srt_dubbing.src.tts_engines.base_engine import BaseTTSEngine
-
-# 使用绝对导入
+from srt_dubbing.src.tts_engines.base_engine import BaseTTSEngine
 from srt_dubbing.src.config import AUDIO, STRATEGY, LOG
 from srt_dubbing.src.srt_parser import SRTEntry
 from srt_dubbing.src.strategies.base_strategy import TimeSyncStrategy

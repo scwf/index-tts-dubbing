@@ -1,9 +1,7 @@
 from __future__ import annotations
-from typing import Dict, Type, Any, TYPE_CHECKING
+from typing import Dict, Type, Any
 
-if TYPE_CHECKING:
-    from .base_engine import BaseTTSEngine
-
+from .base_engine import BaseTTSEngine
 from .index_tts_engine import IndexTTSEngine
 # 当你添加新引擎时，在这里导入
 # from .edge_tts_engine import EdgeTTSEngine 
