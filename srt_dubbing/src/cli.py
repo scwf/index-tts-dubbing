@@ -12,6 +12,7 @@ import time
 from srt_dubbing.src.utils import setup_project_path
 from srt_dubbing.src.config import PATH
 from srt_dubbing.src.srt_parser import SRTParser
+from srt_dubbing.src.txt_parser import TXTParser
 from srt_dubbing.src.strategies import get_strategy, list_available_strategies, get_strategy_description
 from srt_dubbing.src.tts_engines import get_tts_engine, TTS_ENGINES
 from srt_dubbing.src.audio_processor import AudioProcessor
@@ -28,12 +29,15 @@ def main():
     available_tts_engines = list(TTS_ENGINES.keys())
     
     parser = argparse.ArgumentParser(
-        description="SRT字幕配音工具",
+        description="SRT及TXT字幕配音工具",
         formatter_class=argparse.RawTextHelpFormatter
     )
     
-    # --- 核心参数 ---
-    parser.add_argument("--srt", required=True, help="待处理的SRT字幕文件路径")
+    # --- 核心参数 (输入文件) ---
+    input_group = parser.add_mutually_exclusive_group(required=True)
+    input_group.add_argument("--srt", help="待处理的SRT字幕文件路径")
+    input_group.add_argument("--txt", help="待处理的TXT纯文本文件路径")
+
     parser.add_argument("--voice", required=True, help="参考语音WAV文件路径")
     parser.add_argument("--output", default=PATH.get_default_output_path(), help=f"输出的音频文件路径 (默认: {PATH.get_default_output_path()})")
     
@@ -58,6 +62,7 @@ def main():
     )
 
     # --- 模型与配置 ---
+    parser.add_argument("--lang", default="zh", help="[TXT模式] 指定文本语言 (例如: en, zh)")
     parser.add_argument("--prompt-text", help="[CosyVoice] 参考音频对应的文本")
 
     parser.add_argument("--ref-text", help="[F5TTS] 参考音频对应的文本")
@@ -73,8 +78,13 @@ def main():
     log_level = "DEBUG" if args.verbose else "INFO"
     logger = setup_logging(log_level)
     
-    process_logger = create_process_logger("SRT配音")
-    process_logger.start(f"输入: {args.srt}, 引擎: {args.tts_engine}, 策略: {args.strategy}")
+    process_logger = create_process_logger("配音任务")
+    
+    # --- 确定输入文件类型和解析器 ---
+    is_txt_mode = args.txt is not None
+    input_file = args.txt if is_txt_mode else args.srt
+    
+    process_logger.start(f"输入: {input_file}, 引擎: {args.tts_engine}, 策略: {args.strategy}")
 
     # --- 1. 初始化TTS引擎 ---
     try:
@@ -85,21 +95,32 @@ def main():
         logger.error(f"TTS引擎初始化失败: {e}")
         return 1
         
-    # --- 2. 解析SRT文件 ---
+    # --- 2. 解析文件 ---
     try:
-        process_logger.step("解析SRT文件", args.verbose)
-        parser_instance = SRTParser()
-        entries = parser_instance.parse_file(args.srt)
-        logger.success(f"成功解析 {len(entries)} 个字幕条目")
+        process_logger.step("解析输入文件", args.verbose)
+        if is_txt_mode:
+            logger.info(f"检测到TXT文件输入，将按语言 '{args.lang}' 的规则进行解析。")
+            parser_instance = TXTParser(language=args.lang)
+        else:
+            parser_instance = SRTParser()
+        
+        entries = parser_instance.parse_file(input_file)
+        logger.success(f"成功解析 {len(entries)} 个条目")
     except Exception as e:
-        logger.error(f"解析SRT文件失败: {e}")
+        logger.error(f"解析文件失败: {e}")
         return 1
 
     # --- 3. 初始化处理策略 ---
+    strategy_name = args.strategy
+    if is_txt_mode:
+        if strategy_name != "basic":
+            logger.warning(f"TXT文件模式下仅支持 'basic' 策略，已自动切换。")
+            strategy_name = "basic"
+            
     try:
         process_logger.step("初始化处理策略", args.verbose)
         # 注入TTS引擎实例
-        strategy = get_strategy(args.strategy, tts_engine=tts_engine)
+        strategy = get_strategy(strategy_name, tts_engine=tts_engine)
         logger.info(f"使用策略: {strategy.name()} - {strategy.description()}")
     except ValueError as e:
         logger.error(f"策略初始化失败: {e}")

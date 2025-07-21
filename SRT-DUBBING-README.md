@@ -63,6 +63,9 @@ srt_dubbing/
    # 安装日志依赖
    pip install colorama tqdm
 
+   # 安装分句依赖包
+   pip install pysbd
+
 
 1. **配置IndexTTS引擎 (如需使用)**
 
