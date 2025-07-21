@@ -84,7 +84,6 @@ class F5TTSEngine(BaseTTSEngine):
         try:
             # 获取参考音频的时长
             ref_duration = librosa.get_duration(path=voice_wav)
-            logger.debug(f"参考音频 '{voice_wav}' 时长: {ref_duration:.2f}s")
         except Exception as e:
             logger.error(f"无法读取参考音频 '{voice_wav}' 的时长: {e}", exc_info=True)
             # 如果无法获取时长，则无法使用 fix_duration，抛出错误
@@ -99,9 +98,10 @@ class F5TTSEngine(BaseTTSEngine):
 
         # 'fix_duration' 是参考音频和生成音频的总时长
         total_duration = ref_duration + target_duration
-        logger.debug(
-            f"目标生成时长: {target_duration:.2f}s, "
-            f"计算出的 fix_duration (总时长): {total_duration:.2f}s"
+        logger.info(
+            f"[F5TTS-Adaptive] 参考音: {ref_duration:.2f}s, "
+            f"字幕目标: {target_duration:.2f}s, "
+            f"引擎目标(fix_duration): {total_duration:.2f}s"
         )
 
         synthesis_kwargs = kwargs.copy()
