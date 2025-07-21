@@ -70,7 +70,7 @@ class BasicStrategy(TimeSyncStrategy):
                 # 使用注入的TTS引擎合成语音
                 audio_data, _ = self.tts_engine.synthesize(
                     text=entry.text, 
-                    voice_wav=voice_reference
+                    **kwargs
                 )
                 
                 segment = {

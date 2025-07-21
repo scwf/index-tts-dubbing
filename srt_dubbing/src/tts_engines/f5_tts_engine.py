@@ -1,29 +1,31 @@
+import inspect
 from typing import Tuple, Dict, Any
 import numpy as np
 from .base_engine import BaseTTSEngine
 from srt_dubbing.src.logger import get_logger
-from srt_dubbing.src.config import F5TTS as F5TTSConfig
+from srt_dubbing.src.config import F5TTSConfig
 import torch
 import librosa
-from f5_tts.api import F5TTS
+
+# 动态导入F5TTS，如果不存在则给出友好提示
+try:
+    from f5_tts.api import F5TTS
+except ImportError:
+    F5TTS = None
 
 logger = get_logger()
-
-# 从F5TTS文档中提取的有效推理参数
-F5TTS_INFER_PARAMS = [
-    "target_rms", "cross_fade_duration", "sway_sampling_coef", "cfg_strength",
-    "nfe_step", "speed", "fix_duration", "remove_silence"
-]
-
 
 class F5TTSEngine(BaseTTSEngine):
     """F5TTS引擎的实现 (遵循F5TTS_infer.md)"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self):
         """
         初始化F5TTS引擎。
         注意：'config' 参数在此实现中被忽略，配置直接从config模块获取。
         """
+        if F5TTS is None:
+            raise ImportError("F5TTS未安装，请执行 `pip install f5-tts` 进行安装。")
+
         logger.step("加载F5TTS模型...")
         try:
             # 直接从配置模块获取初始化参数
@@ -33,31 +35,34 @@ class F5TTSEngine(BaseTTSEngine):
 
             logger.debug(f"F5TTS初始化参数: {init_kwargs}")
             self.tts_model = F5TTS(**init_kwargs)
+
+            # 使用内省机制，获取底层模型真正支持的参数列表
+            infer_signature = inspect.signature(self.tts_model.infer)
+            self.valid_infer_params = set(infer_signature.parameters.keys())
+            
             logger.success("F5TTS模型加载成功")
         except Exception as e:
             logger.error(f"F5TTS模型加载失败: {e}", exc_info=True)
             raise RuntimeError(f"加载F5TTS模型失败: {e}")
 
     def synthesize(self, text: str, **kwargs) -> Tuple[np.ndarray, int]:
-        voice_wav = kwargs.pop("voice_wav", None)
-        if not voice_wav:
-            raise ValueError("F5TTS引擎的 `synthesize` 方法需要 'voice_wav' 参数。")
+        voice_reference = kwargs.pop('voice_reference')
+        if not voice_reference:
+            raise ValueError("必须提供参考语音文件路径 (voice_reference)")
 
-        # F5TTS需要参考文本，我们使用它的转录功能自动获取
-        try:
-            ref_text = self.tts_model.transcribe(voice_wav)
-            logger.debug(f"自动转录参考音频文本: {ref_text}")
-        except Exception as e:
-            logger.warning(f"无法自动转录参考音频: {e}。将使用默认的占位符文本。", exc_info=True)
-            ref_text = "Reference audio."
+        # 优先从kwargs中获取参考文本(prompt_text)，如果未提供，再尝试自动转录
+        ref_text = kwargs.pop("ref_text")
+        if not ref_text:
+            raise ValueError("F5TTS引擎的 `synthesize` 方法需要 'ref_text' 参数。") 
 
-        # 筛选出F5TTS infer方法所需的参数
+        # 优雅地过滤出底层模型支持的参数
         infer_kwargs = {
-            key: value for key, value in kwargs.items() if key in F5TTS_INFER_PARAMS
+            key: value for key, value in kwargs.items() 
+            if key in self.valid_infer_params
         }
 
         wav, sr, _ = self.tts_model.infer(
-            ref_file=voice_wav,
+            ref_file=voice_reference,
             ref_text=ref_text,
             gen_text=text,
             **infer_kwargs
@@ -77,15 +82,15 @@ class F5TTSEngine(BaseTTSEngine):
         （可选）合成一个精确匹配目标时长的音频。
         此实现利用F5TTS的 'fix_duration' 参数。
         """
-        voice_wav = kwargs.get("voice_wav")
-        if not voice_wav:
-            raise ValueError("synthesize_to_duration 需要 'voice_wav' 参数。")
+        voice_reference = kwargs.get('voice_reference')
+        if not voice_reference:
+            raise ValueError("必须提供参考语音文件路径 (voice_reference)")
 
         try:
             # 获取参考音频的时长
-            ref_duration = librosa.get_duration(path=voice_wav)
+            ref_duration = librosa.get_duration(path=voice_reference)
         except Exception as e:
-            logger.error(f"无法读取参考音频 '{voice_wav}' 的时长: {e}", exc_info=True)
+            logger.error(f"无法读取参考音频 '{voice_reference}' 的时长: {e}", exc_info=True)
             # 如果无法获取时长，则无法使用 fix_duration，抛出错误
             raise RuntimeError("无法获取参考音频时长，无法使用 'fix_duration'。") from e
 
@@ -109,10 +114,3 @@ class F5TTSEngine(BaseTTSEngine):
 
         # 调用自身的synthesize方法，它会处理参数过滤和实际的TTS调用
         return self.synthesize(text, **synthesis_kwargs)
-
-
-    @staticmethod
-    def get_config_model() -> Dict[str, Any]:
-        """返回F5TTS引擎的默认配置模型"""
-        # 直接返回配置模块中定义的默认值
-        return F5TTSConfig.get_init_kwargs() 

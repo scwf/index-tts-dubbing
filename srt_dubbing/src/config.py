@@ -45,20 +45,22 @@ class StrategyConfig:
     BASIC_MIN_SPEED_RATIO = 0.8
 
 
-class ModelConfig:
-    """模型相关配置"""
+class IndexTTSConfig:
+    """IndexTTS引擎专用配置"""
     # IndexTTS模型默认路径
-    DEFAULT_MODEL_DIR = "model-dir/index_tts"
-    DEFAULT_CONFIG_FILE = "config.yaml"
+    MODEL_DIR = "model-dir/index_tts"
+    CONFIG_FILE = "model-dir/index_tts/config.yaml"
+    # TTS推理配置
+    FP16 = True
     
     @classmethod
-    def get_default_config_path(cls, model_dir: Optional[str] = None) -> str:
-        """获取默认配置文件路径"""
-        model_dir = model_dir or cls.DEFAULT_MODEL_DIR
-        return os.path.join(model_dir, cls.DEFAULT_CONFIG_FILE)
-    
-    # TTS推理配置
-    DEFAULT_FP16 = True
+    def get_init_kwargs(cls) -> Dict[str, Any]:
+        """获取用于IndexTTS初始化的字典"""
+        return {
+            "cfg_path": cls.CONFIG_FILE,
+            "model_dir": cls.MODEL_DIR,
+            "is_fp16": cls.FP16,
+        }
 
 
 class F5TTSConfig:
@@ -71,7 +73,7 @@ class F5TTSConfig:
     USE_EMA = True
     VOCODER_LOCAL_PATH = None
     DEVICE = None
-    HF_CACHE_DIR = "model-dir/"
+    HF_CACHE_DIR = "model-dir/" #模型自动缓存到该目录
 
     @classmethod
     def get_init_kwargs(cls) -> Dict[str, Any]:
@@ -85,6 +87,28 @@ class F5TTSConfig:
             "vocoder_local_path": cls.VOCODER_LOCAL_PATH,
             "device": cls.DEVICE,
             "hf_cache_dir": cls.HF_CACHE_DIR,
+        }
+
+
+class CosyVoiceConfig:
+    """CosyVoice引擎专用配置"""
+    MODEL_ID = 'iic/CosyVoice2-0.5B'
+    PROMPT_TEXT = None
+    FP16 = False
+    LOAD_JIT = False
+    LOAD_TRT = False
+    LOAD_VLLM = False
+
+    @classmethod
+    def get_init_kwargs(cls) -> Dict[str, Any]:
+        """获取用于CosyVoice初始化的字典"""
+        return {
+            "model_dir": cls.MODEL_ID,
+            "prompt_text": cls.PROMPT_TEXT,
+            "is_fp16": cls.FP16,
+            "load_jit": cls.LOAD_JIT,
+            "load_trt": cls.LOAD_TRT,
+            "load_vllm": cls.LOAD_VLLM,
         }
 
 
@@ -125,7 +149,7 @@ class LogConfig:
 CONFIG = {
     'audio': AudioConfig,
     'strategy': StrategyConfig,
-    'model': ModelConfig,
+    'model': IndexTTSConfig,
     'f5_tts': F5TTSConfig,
     'path': PathConfig,
     'validation': ValidationConfig,
@@ -149,8 +173,6 @@ def get_config(category: str) -> Any:
 # 常用配置的快捷访问
 AUDIO = AudioConfig
 STRATEGY = StrategyConfig  
-MODEL = ModelConfig
-F5TTS = F5TTSConfig
 PATH = PathConfig
 VALIDATION = ValidationConfig
 LOG = LogConfig 

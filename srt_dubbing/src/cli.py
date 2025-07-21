@@ -10,7 +10,7 @@ import time
 
 # 使用绝对导入
 from srt_dubbing.src.utils import setup_project_path
-from srt_dubbing.src.config import MODEL, PATH
+from srt_dubbing.src.config import PATH
 from srt_dubbing.src.srt_parser import SRTParser
 from srt_dubbing.src.strategies import get_strategy, list_available_strategies, get_strategy_description
 from srt_dubbing.src.tts_engines import get_tts_engine, TTS_ENGINES
@@ -58,9 +58,11 @@ def main():
     )
 
     # --- 模型与配置 ---
-    parser.add_argument("--model-dir", default=MODEL.DEFAULT_MODEL_DIR, help="TTS模型目录路径")
-    parser.add_argument("--cfg-path", help="TTS模型配置文件路径 (默认: 自动检测)")
-    
+    parser.add_argument("--prompt-text", help="[CosyVoice] 参考音频对应的文本")
+
+    parser.add_argument("--ref-text", help="[F5TTS] 参考音频对应的文本")
+
+
     # --- 其他选项 ---
     parser.add_argument("--verbose", action="store_true", help="启用详细输出模式")
     
@@ -77,11 +79,7 @@ def main():
     # --- 1. 初始化TTS引擎 ---
     try:
         process_logger.step("初始化TTS引擎", args.verbose)
-        tts_config = {
-            "model_dir": args.model_dir,
-            "cfg_path": args.cfg_path,
-        }
-        tts_engine = get_tts_engine(args.tts_engine, tts_config)
+        tts_engine = get_tts_engine(args.tts_engine)
         logger.info(f"使用TTS引擎: {args.tts_engine}")
     except (ValueError, RuntimeError, ImportError) as e:
         logger.error(f"TTS引擎初始化失败: {e}")
@@ -110,10 +108,18 @@ def main():
     # --- 4. 生成音频片段 ---
     try:
         process_logger.step("生成音频片段", args.verbose)
+        
+        # 将引擎特定的运行时参数传递给策略
+        runtime_kwargs = {
+            "prompt_text": args.prompt_text,
+            "ref_text": args.ref_text
+        }
+        
         audio_segments = strategy.process_entries(
             entries,
             voice_reference=args.voice,
-            verbose=args.verbose
+            verbose=args.verbose,
+            **runtime_kwargs
         )
         logger.success(f"成功生成 {len(audio_segments)} 个音频片段")
     except Exception as e:

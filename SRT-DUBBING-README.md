@@ -45,34 +45,76 @@ srt_dubbing/
 - 支持CUDA的GPU（可选，用于加速）
 
 ### 依赖安装
+0. **srt-dubbing**
+   todo: clone repo
+   # 创建python env环境
+   conda create -n srt-dubbing python=3.10
+   conda activate srt-dubbing
 
-1. **安装IndexTTS**
-   ```bash
-   # 克隆IndexTTS项目
-   git clone https://github.com/IndexTeam/Index-1.9B.git
-   cd Index-1.9B
-   
-   # 安装依赖
-   pip install -e .
-   ```
+   # 安装ffmpeg（可选，建议用conda安装）
+   conda install -c conda-forge ffmpeg
 
-2. **安装音频处理依赖**
-   ```bash
-   pip install librosa numpy torchaudio soundfile
-   ```
+   # 安装PyTorch（请根据你的CUDA版本选择合适的指令）
+   pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118
 
-3. **安装日志依赖**
-   ```bash
+   # 安装音频处理依赖
+   pip install librosa numpy soundfile
+
+   # 安装日志依赖
    pip install colorama tqdm
+
+
+1. **配置IndexTTS引擎 (如需使用)**
+
+   # 克隆IndexTTS主仓库到srt-dubbing并列的目录
+
+   ```bash
+   git clone https://github.com/index-tts/index-tts.git
+   cd index-tts
+   pip install -r requirements.txt
    ```
 
-4. **下载模型文件**
+   # 下载模型文件（以1.5版本为例）到指定目录（model-dir）：
    ```bash
-   # 使用HuggingFace CLI下载
-   huggingface-cli download IndexTeam/Index-1.9B-Chat --local-dir model-dir/index_tts
+   huggingface-cli download IndexTeam/IndexTTS-1.5 \
+     config.yaml bigvgan_discriminator.pth bigvgan_generator.pth bpe.model dvae.pth gpt.pth unigram_12000.vocab \
+     --local-dir model-dir
+   ```
+
+   如下载速度慢，可使用镜像：
+
+   ```bash
+   export HF_ENDPOINT="https://hf-mirror.com"
+   ```
+
+   或用wget单独下载：
+
+   ```bash
+   wget https://huggingface.co/IndexTeam/IndexTTS-1.5/resolve/main/bigvgan_discriminator.pth -P model-dir
+   wget https://huggingface.co/IndexTeam/IndexTTS-1.5/resolve/main/bigvgan_generator.pth -P model-dir
+   wget https://huggingface.co/IndexTeam/IndexTTS-1.5/resolve/main/bpe.model -P model-dir
+   wget https://huggingface.co/IndexTeam/IndexTTS-1.5/resolve/main/dvae.pth -P model-dir
+   wget https://huggingface.co/IndexTeam/IndexTTS-1.5/resolve/main/gpt.pth -P model-dir
+   wget https://huggingface.co/IndexTeam/IndexTTS-1.5/resolve/main/unigram_12000.vocab -P model-dir
+   wget https://huggingface.co/IndexTeam/IndexTTS-1.5/resolve/main/config.yaml -P model-dir
+   ```
+
+   > 注意：如需使用IndexTTS-1.0模型，请将上述命令中的`IndexTeam/IndexTTS-1.5`替换为`IndexTeam/IndexTTS`。
+
+
+2. **配置 CosyVoice引擎 (如需使用)**
    
-   # 或使用git clone
-   git clone https://huggingface.co/IndexTeam/Index-1.9B-Chat model-dir/index_tts
+   # 克隆CosyVoice主仓库到srt-dubbing并列的目录
+   ```bash
+   git clone --recursive https://github.com/FunAudioLLM/CosyVoice.git
+   cd CosyVoice
+   pip install -r requirements.txt
+   # 注意：需要将CosyVoice项目路径添加到PYTHONPATH
+   ```
+3. **配置 F5TTS (如需使用)**
+
+   ```bash
+   pip install f5-tts
    ```
 
 ## 📝 使用说明
@@ -107,6 +149,16 @@ python -m srt_dubbing.src.cli \
   --output output/movie_f5.wav \
   --tts-engine f5_tts \
   --strategy adaptive \
+  --verbose
+
+# 使用CosyVoice引擎 (需要提供参考文本)
+python -m srt_dubbing.src.cli \
+  --srt subtitles/movie.srt \
+  --voice voices/speaker.wav \
+  --output output/movie_cosy.wav \
+  --tts-engine cosy_voice \
+  --prompt-text "这是参考音频说的话。" \
+  --fp16 \
   --verbose
 
 # 假设未来有一个edge_tts引擎，可以这样切换
@@ -150,7 +202,7 @@ python -m srt_dubbing.src.cli \
 | 参数 | 默认值 | 说明 | 示例 |
 |------|--------|------|------|
 | `--strategy` | `stretch` | 时间同步策略 | `--strategy basic` |
-| `--tts-engine` | `index_tts` | 选择TTS引擎。可用: `index_tts`, `f5_tts` | `--tts-engine f5_tts` |
+| `--tts-engine` | `index_tts` | 选择TTS引擎。可用: `index_tts`, `f5_tts`, `cosy_voice` | `--tts-engine cosy_voice` |
 
 ### TTS引擎特定参数
 
@@ -158,6 +210,8 @@ python -m srt_dubbing.src.cli \
 |------|--------|------|------|
 | `--model-dir` | `model-dir/index_tts` | TTS模型目录 | `--model-dir /path/to/model` |
 | `--cfg-path` | 自动检测 | 模型配置文件路径 | `--cfg-path config.yaml` |
+| `--prompt-text`| 无 | [CosyVoice] 参考音频对应的文本，使用 `cosy_voice` 引擎时必需 | `--prompt-text "你好世界"` |
+| `--fp16` | 关闭 | [CosyVoice/IndexTTS] 启用FP16半精度推理以加速 | `--fp16` |
 
 ### 其他
 

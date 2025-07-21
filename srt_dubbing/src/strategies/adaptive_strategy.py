@@ -31,9 +31,6 @@ class AdaptiveStrategy(TimeSyncStrategy):
         return "自适应策略：调用引擎的自适应功能以匹配时长，效果取决于引擎自身实现。"
 
     def process_entries(self, entries: List[SRTEntry], **kwargs) -> List[Dict[str, Any]]:
-        voice_reference = kwargs.get('voice_reference')
-        if not voice_reference:
-            raise ValueError("必须提供参考语音文件路径 (voice_reference)")
         
         process_logger = create_process_logger("自适应策略音频生成")
         audio_segments = []
@@ -49,7 +46,7 @@ class AdaptiveStrategy(TimeSyncStrategy):
                 audio_data, _ = self.tts_engine.synthesize_to_duration(
                     text=entry.text,
                     target_duration=entry.duration,
-                    voice_wav=voice_reference
+                    **kwargs
                 )
 
                 segment = {

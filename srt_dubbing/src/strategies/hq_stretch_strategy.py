@@ -79,7 +79,7 @@ class HighQualityStretchStrategy(TimeSyncStrategy):
                 # 1. 合成原始语音
                 audio_data, sampling_rate = self.tts_engine.synthesize(
                     text=entry.text,
-                    voice_wav=voice_reference
+                    **kwargs
                 )
                 
                 # 2. 计算时长和变速比例

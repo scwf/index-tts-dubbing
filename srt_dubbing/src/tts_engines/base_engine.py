@@ -6,7 +6,7 @@ class BaseTTSEngine(ABC):
     """TTS引擎的抽象基类"""
 
     @abstractmethod
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self):
         """
         初始化引擎。
         :param config: 引擎所需的特定配置字典。
@@ -36,12 +36,3 @@ class BaseTTSEngine(ABC):
         :raises: NotImplementedError 如果引擎不支持此功能。
         """
         raise NotImplementedError(f"引擎 '{type(self).__name__}' 不支持自适应时长合成。")
-
-    @staticmethod
-    @abstractmethod
-    def get_config_model() -> Dict[str, Any]:
-        """
-        返回引擎的默认配置模型。
-        这可以用于动态生成命令行参数或配置文件模板。
-        """
-        pass 
