@@ -127,7 +127,7 @@ def main():
         merged_audio = processor.merge_audio_segments(
             audio_segments,
             strategy_name=args.strategy,
-            allow_overlap=True,
+            truncate_on_overflow=False,
             verbose=args.verbose
         )
         

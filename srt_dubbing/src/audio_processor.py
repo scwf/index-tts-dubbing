@@ -32,7 +32,7 @@ class AudioProcessor:
     
     def merge_audio_segments(self, segments: List[Dict[str, Any]], 
                            strategy_name: str = "stretch",
-                           allow_overlap: bool = True,
+                           truncate_on_overflow: bool = False,
                            verbose: bool = False) -> np.ndarray:
         """
         根据策略类型合并音频片段
@@ -43,7 +43,9 @@ class AudioProcessor:
                 - start_time: 开始时间
                 - end_time: 结束时间
             strategy_name: 策略名称 ("basic", "hq_stretch", "stretch")
-            allow_overlap: 是否允许音频重叠（仅对stretch策略有效）
+            truncate_on_overflow: 当音频时长溢出字幕时长时，是否截断音频。
+                                      False (默认): 保留完整音频，即使它超出字幕时间（自然拼接）。
+                                      True: 在字幕结束时切断音频，以保证严格的时间同步。
             verbose: 是否输出详细信息
         
         Returns:
@@ -62,7 +64,7 @@ class AudioProcessor:
         else:
             if verbose:
                 logger.debug(f"使用时间同步模式进行音频合并 (策略: {strategy_name})")
-            return self._time_synchronized_merge(segments, allow_overlap, verbose)
+            return self._time_synchronized_merge(segments, truncate_on_overflow, verbose)
 
     
     def _natural_concatenation(self, segments: List[Dict[str, Any]], 
@@ -128,9 +130,7 @@ class AudioProcessor:
         
         return merged_audio
     
-    def _time_synchronized_merge(self, segments: List[Dict[str, Any]], 
-                                allow_overlap: bool = True,
-                                verbose: bool = False) -> np.ndarray:
+    def _time_synchronized_merge(self, segments: List[Dict[str, Any]], truncate_on_overflow: bool, verbose: bool) -> np.ndarray:
         """
         时间同步合并模式：严格按照字幕时间定位音频片段
         
@@ -138,7 +138,7 @@ class AudioProcessor:
         
         Args:
             segments: 音频片段列表
-            allow_overlap: 是否允许音频重叠
+            truncate_on_overflow: 当音频时长溢出字幕时长时，是否截断音频。
             verbose: 是否输出详细信息
             
         Returns:
@@ -190,7 +190,7 @@ class AudioProcessor:
             end_sample = start_sample + len(audio_data)
             
             # 检查是否会重叠
-            if not allow_overlap and i > 0:
+            if not truncate_on_overflow and i > 0:
                 prev_segment = sorted_segments[i-1] 
                 prev_end_sample = int(prev_segment['start_time'] * self.sample_rate) + len(prev_segment['audio_data'])
                 if start_sample < prev_end_sample:
@@ -213,19 +213,14 @@ class AudioProcessor:
                 total_samples = new_total_samples
             
             # 放置音频数据（不截断）
-            if allow_overlap:
-                # 混音模式：将新音频加到现有音频上
-                merged_audio[start_sample:end_sample] += audio_data
-            else:
-                # 覆盖模式：直接替换
-                merged_audio[start_sample:end_sample] = audio_data
+            merged_audio[start_sample:end_sample] += audio_data
             
             if verbose:
                 actual_duration = len(audio_data) / self.sample_rate
                 logger.debug(f"  ✓ 片段 {i+1} 已放置: {start_sample}-{end_sample} 样本 ({actual_duration:.2f}s)")
         
         # 防止音频过载（混音时可能超过[-1,1]范围）
-        if allow_overlap:
+        if not truncate_on_overflow:
             max_val = np.max(np.abs(merged_audio))
             if max_val > AUDIO.MAX_AMPLITUDE:
                 merged_audio = merged_audio / max_val
