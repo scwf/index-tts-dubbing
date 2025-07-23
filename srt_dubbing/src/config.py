@@ -52,7 +52,7 @@ class IndexTTSConfig:
     CONFIG_FILE = "model-dir/index_tts/config.yaml"
     # TTS推理配置
     FP16 = True
-    
+    SOURCE_DIR = "/home/xiaofei/code/index-tts"
     @classmethod
     def get_init_kwargs(cls) -> Dict[str, Any]:
         """获取用于IndexTTS初始化的字典"""
@@ -98,6 +98,7 @@ class CosyVoiceConfig:
     LOAD_JIT = False
     LOAD_TRT = False
     LOAD_VLLM = False
+    SOURCE_DIR = "/home/xiaofei/code/CosyVoice/"
 
     @classmethod
     def get_init_kwargs(cls) -> Dict[str, Any]:
@@ -105,7 +106,7 @@ class CosyVoiceConfig:
         return {
             "model_dir": cls.MODEL_ID,
             "prompt_text": cls.PROMPT_TEXT,
-            "is_fp16": cls.FP16,
+            "fp16": cls.FP16,
             "load_jit": cls.LOAD_JIT,
             "load_trt": cls.LOAD_TRT,
             "load_vllm": cls.LOAD_VLLM,

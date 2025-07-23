@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List, Union
 import logging
 import numpy as np
-
+from srt_dubbing.src.config import CosyVoiceConfig, IndexTTSConfig
 
 def setup_project_path():
     """
@@ -25,8 +25,17 @@ def setup_project_path():
     # 添加到 sys.path（如果还没有的话）
     project_root_str = str(project_root)
     if project_root_str not in sys.path:
-        sys.path.insert(0, project_root_str)
-    
+        sys.path.append(project_root_str)
+
+    # 仅当 CosyVoiceConfig.SOURCE_DIR 存在时才添加到 sys.path
+    if os.path.exists(CosyVoiceConfig.SOURCE_DIR) and CosyVoiceConfig.SOURCE_DIR not in sys.path:
+        sys.path.append(CosyVoiceConfig.SOURCE_DIR)
+        sys.path.append(CosyVoiceConfig.SOURCE_DIR + "/third_party/Matcha-TTS")
+
+    # 仅当 IndexTTSConfig.SOURCE_DIR 存在时才添加到 sys.path
+    if os.path.exists(IndexTTSConfig.SOURCE_DIR) and IndexTTSConfig.SOURCE_DIR not in sys.path:
+        sys.path.append(IndexTTSConfig.SOURCE_DIR)
+
     return project_root
 
 

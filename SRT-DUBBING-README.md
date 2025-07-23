@@ -47,29 +47,29 @@ srt_dubbing/
 ### 依赖安装
 0. **srt-dubbing**
    todo: clone repo
-   # 创建python env环境
+   #### 创建python env环境
    conda create -n srt-dubbing python=3.10
    conda activate srt-dubbing
 
-   # 安装ffmpeg（可选，建议用conda安装）
+   #### 安装ffmpeg（可选，建议用conda安装）
    conda install -c conda-forge ffmpeg
 
-   # 安装PyTorch（请根据你的CUDA版本选择合适的指令）
+   #### 安装PyTorch（请根据你的CUDA版本选择合适的指令）
    pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118
 
-   # 安装音频处理依赖
+   #### 安装音频处理依赖
    pip install librosa numpy soundfile
 
-   # 安装日志依赖
+   #### 安装日志依赖
    pip install colorama tqdm
 
-   # 安装分句依赖包
+   #### 安装分句依赖包
    pip install pysbd
 
 
 1. **配置IndexTTS引擎 (如需使用)**
 
-   # 克隆IndexTTS主仓库到srt-dubbing并列的目录
+   #### 克隆IndexTTS主仓库到srt-dubbing并列的目录
 
    ```bash
    git clone https://github.com/index-tts/index-tts.git
@@ -77,7 +77,7 @@ srt_dubbing/
    pip install -r requirements.txt
    ```
 
-   # 下载模型文件（以1.5版本为例）到指定目录（model-dir）：
+   #### 下载模型文件（以1.5版本为例）到指定目录（model-dir）：
    ```bash
    huggingface-cli download IndexTeam/IndexTTS-1.5 \
      config.yaml bigvgan_discriminator.pth bigvgan_generator.pth bpe.model dvae.pth gpt.pth unigram_12000.vocab \
@@ -107,7 +107,7 @@ srt_dubbing/
 
 2. **配置 CosyVoice引擎 (如需使用)**
    
-   # 克隆CosyVoice主仓库到srt-dubbing并列的目录
+   #### 克隆CosyVoice主仓库到srt-dubbing并列的目录
    ```bash
    git clone --recursive https://github.com/FunAudioLLM/CosyVoice.git
    cd CosyVoice
